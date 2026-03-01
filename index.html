@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Custom Wordle</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="toast-container"></div>
+    <header>
+        <div class="header-content">
+            <h1>Wordle</h1>
+        </div>
+    </header>
+
+    <main>
+        <!-- Game Container -->
+        <div id="game-container" class="hidden">
+            <div id="game-board"></div>
+            <div id="keyboard-container"></div>
+            <button id="hint-button" class="action-button">
+                💡 Hint <span id="hint-count">0</span>
+            </button>
+        </div>
+
+        <!-- Landing page shown when no puzzle link is present -->
+        <div id="creator-container">
+            <div style="text-align:center; padding:2rem 1rem;">
+                <div style="font-size:3rem; margin-bottom:1rem;">🔒</div>
+                <h2 style="font-family:'Space Mono',monospace; font-size:1.2rem; font-weight:700; margin-bottom:0.75rem; color:#f1f5f9;">You need a puzzle link to play</h2>
+                <p style="color:#64748b; font-size:0.9rem; line-height:1.6;">Ask the person who challenged you to send you their link.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="script.obf.js"></script>
+</body>
+</html>
