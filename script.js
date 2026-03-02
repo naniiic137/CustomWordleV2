@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', function () {
        the game runs fully in-browser without a backend.
        ⚠️  REVERT TO false BEFORE DEPLOYING TO NETLIFY.
     ════════════════════════════════════════════════════════ */
-    var LOCAL_DEV = false;
+    var LOCAL_DEV = true;
 
 
     /* ═══════════════════════════════════════════════════════
@@ -65,7 +65,9 @@ document.addEventListener('DOMContentLoaded', function () {
         var w=cfg.word.toUpperCase(),w2=(cfg.word2||'').toUpperCase(),mw=w2.length>0;
         var flags=(cfg.hide?1:0)|(cfg.nocol?2:0)|(cfg.nobk?4:0)|(cfg.one?8:0)|(cfg.rf?16:0)|(cfg.sd?32:0)|(mw?64:0)|(cfg.timed?128:0);
         var flags2=(cfg.fibble?1:0)|(cfg.absurdle?2:0)|(cfg.mirror?4:0)|(cfg.fakenews?8:0)|(cfg.gaslight?16:0)|(cfg.schrodinger?32:0)|(cfg.falsehope?64:0)|(cfg.mimic?128:0);
-        var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0);
+        var mp=cfg.maxPlayers||0;
+        /* flags3 bit layout: 1=showModes, 2=dictRestrict, 4=glitch, 8=hasMaxPlayers */
+        var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0)|(mp>0?8:0);
         var t=cfg.timer||0;
         var header=[];
         header.push(w.length);
@@ -73,6 +75,8 @@ document.addEventListener('DOMContentLoaded', function () {
         header.push(flags,cfg.hints||0,cfg.guesses||6,cfg.plays||0,cfg.used||0,(t>>8)&0xff,t&0xff);
         if(mw){header.push(w2.length);for(var c=0;c<w2.length;c++)header.push(w2.charCodeAt(c));}
         header.push(0x01,flags2,cfg.hintUnlock||0,flags3);
+        /* Append maxPlayers as 2 bytes only when non-zero (flag bit 8 signals presence) */
+        if(mp>0)header.push((mp>>8)&0xff,mp&0xff);
         return new Uint8Array(header);
     }
 
@@ -83,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var f=u[i++],hints=u[i++],guesses=u[i++],plays=u[i++],used=u[i++];
         var timer=(u[i++]<<8)|u[i++],w2='';
         if(f&64){var w2l=u[i++];for(var c=0;c<w2l;c++)w2+=String.fromCharCode(u[i++]);}
-        var f2=0,hintUnlock=0,f3=0;
+        var f2=0,hintUnlock=0,f3=0,maxPlayers=0;
         var savedGuesses=[],savedGuesses2=[];
         /* New links start this section with magic byte 0x01.
            Old links go straight to 0x00 (progress marker) or end of buffer. */
@@ -92,6 +96,8 @@ document.addEventListener('DOMContentLoaded', function () {
             f2=u[i++]||0;
             hintUnlock=u[i++]||0;
             f3=u[i++]||0;
+            /* flags3 bit 8 signals two maxPlayers bytes follow (backward-compatible) */
+            if((f3&8)&&i+1<u.length)maxPlayers=(u[i++]<<8)|u[i++];
         }
         if(i<u.length&&u[i]===0){
             i++;
@@ -100,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return{word:w,word2:w2,hide:!!(f&1),nocol:!!(f&2),nobk:!!(f&4),one:!!(f&8),rf:!!(f&16),sd:!!(f&32),timed:!!(f&128),
                fibble:!!(f2&1),absurdle:!!(f2&2),mirror:!!(f2&4),fakenews:!!(f2&8),gaslight:!!(f2&16),schrodinger:!!(f2&32),falsehope:!!(f2&64),mimic:!!(f2&128),
                showModes:!!(f3&1),dictRestrict:!!(f3&2),glitch:!!(f3&4),
-               hints:hints,guesses:guesses,plays:plays,used:used,timer:timer,hintUnlock:hintUnlock,savedGuesses:savedGuesses,savedGuesses2:savedGuesses2};
+               hints:hints,guesses:guesses,plays:plays,used:used,timer:timer,hintUnlock:hintUnlock,maxPlayers:maxPlayers,savedGuesses:savedGuesses,savedGuesses2:savedGuesses2};
     }
 
     /* Generate 16-byte key → 22-char base64url secret */
@@ -210,7 +216,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var targetWord='',wordLength=5,currentRow=0,currentCol=0;
     var isGameOver=false,hideWordOnLoss=false,hintsRemaining=0;
-    var maxGuesses=6,maxPlays=0,playsUsed=0;
+    var maxGuesses=6,maxPlays=0,playsUsed=0,maxPlayersLimit=0;
     var noColorFeedback=false,noBackspace=false,oneStrike=false;
     var revealFirst=false,shareDist=false,multiWord=false;
     var timedMode=false,timerSeconds=0,timerInterval=null;
@@ -262,7 +268,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             targetWord=word;wordLength=word.length;hideWordOnLoss=cfg.hide;
             hintsRemaining=cfg.hints;maxGuesses=cfg.guesses||6;
-            maxPlays=cfg.plays;playsUsed=cfg.used;
+            maxPlays=cfg.plays;playsUsed=cfg.used;maxPlayersLimit=cfg.maxPlayers||0;
             noColorFeedback=cfg.nocol;noBackspace=cfg.nobk;oneStrike=cfg.one;
             revealFirst=cfg.rf;shareDist=cfg.sd;timerSeconds=cfg.timer;timedMode=timerSeconds>=10;
 
@@ -292,24 +298,33 @@ document.addEventListener('DOMContentLoaded', function () {
                We hash the fragment so the real decryption token never reaches the server.
                The server stores { used, max } per link and is the single source of truth.
                If the server is unreachable the link is blocked (fail closed = secure). */
-            if(maxPlays>0){
+            if(maxPlays>0||maxPlayersLimit>0){
                 /* Fingerprint this browser so each person gets their own attempt quota.
                    Same fingerprint in normal + private tabs (Chrome/Edge/Safari) means
                    a private-tab replay is detected and blocked once quota is exhausted. */
                 var playerFp=await getPlayerFingerprint();
 
                 if(LOCAL_DEV){
-                    /* ── LOCAL DEV: simulate per-player attempt counter in localStorage ──
-                       Key = first 16 chars of encrypted payload (link) +
-                             first 16 chars of player fingerprint.
-                       Each distinct browser/fingerprint gets its own counter.
-                       To reset: DevTools → Application → Local Storage →
-                                 delete the matching "wordle_dev_*" entry. */
+                    /* ── LOCAL DEV: simulate per-player + total-player caps in localStorage ──
+                       devKey     = per-player attempt counter (link × player)
+                       playersKey = set of unique player fingerprints seen for this link */
                     var devKey='wordle_dev_'+d.slice(0,16)+'_'+playerFp.slice(0,16);
                     var devUsed=parseInt(localStorage.getItem(devKey)||'0',10);
-                    if(devUsed>=maxPlays){showBlockedScreen();return;}
-                    devUsed++;
-                    localStorage.setItem(devKey,devUsed);
+
+                    /* Check total-player cap first (for new players only) */
+                    if(devUsed===0&&maxPlayersLimit>0){
+                        var playersKey='wordle_dev_pl_'+d.slice(0,16);
+                        var seenPlayers=JSON.parse(localStorage.getItem(playersKey)||'[]');
+                        if(seenPlayers.indexOf(playerFp.slice(0,16))===-1){
+                            if(seenPlayers.length>=maxPlayersLimit){showBlockedScreen();return;}
+                            seenPlayers.push(playerFp.slice(0,16));
+                            localStorage.setItem(playersKey,JSON.stringify(seenPlayers));
+                        }
+                    }
+
+                    /* Then check per-player attempt cap */
+                    if(maxPlays>0&&devUsed>=maxPlays){showBlockedScreen();return;}
+                    if(maxPlays>0){devUsed++;localStorage.setItem(devKey,devUsed);}
                     playsUsed=devUsed;
                     currentLinkId=null;
                     currentPlayId='dev-'+Date.now();
@@ -327,7 +342,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         var res=await fetch('/.netlify/functions/play',{
                             method:'POST',
                             headers:{'Content-Type':'application/json'},
-                            body:JSON.stringify({id:linkId,playerId:playerFp,max:maxPlays})
+                            body:JSON.stringify({id:linkId,playerId:playerFp,max:maxPlays,maxPlayers:maxPlayersLimit})
                         });
                         if(res.ok){
                             var data=await res.json();
@@ -1087,6 +1102,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 var keyBuf=await deriveKey(tokenBuf);
                 var cfg={word:word,word2:word2,hints:hints,guesses:guesses,plays:plays,used:0,
                          hide:hideW,nocol:noCol,nobk:noBk,one:oneStr,rf:rfirst,sd:shareDst,timed:timed,timer:timed?timerV:0,
+                          maxPlayers:parseInt((document.getElementById('custom-maxplayers-input')||{}).value,10)||0,
                          fibble:document.getElementById('fibble-toggle')&&document.getElementById('fibble-toggle').checked,
                          absurdle:document.getElementById('absurdle-toggle')&&document.getElementById('absurdle-toggle').checked,
                          mirror:document.getElementById('mirror-toggle')&&document.getElementById('mirror-toggle').checked,

@@ -1,263 +1,365 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
     <title>Create a Puzzle</title>
     <link rel="stylesheet" href="style.css">
     <style>
-    .hint-unlock-wrap{
-        display:flex; align-items:center; gap:0.65rem;
-        background:rgba(129,140,248,0.06); border:1px dashed rgba(129,140,248,0.25);
-        border-radius:10px; padding:0.6rem 1rem;
-        animation:fadeSlideIn 0.2s ease;
-    }
-    .hint-unlock-wrap.hidden{display:none}
-    .hint-unlock-icon{font-size:1rem;flex-shrink:0}
-    .hint-unlock-wrap input{
-        flex:1; background:transparent; border:none; outline:none;
-        color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.9rem;
-    }
-    .hint-unlock-wrap input::placeholder{color:var(--text-muted);}
+        .hint-unlock-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            background: rgba(129, 140, 248, 0.06);
+            border: 1px dashed rgba(129, 140, 248, 0.25);
+            border-radius: 10px;
+            padding: 0.6rem 1rem;
+            animation: fadeSlideIn 0.2s ease;
+        }
 
-    /* Show modes row */
-    .show-modes-row{
-        display:flex; align-items:center; justify-content:space-between;
-        gap:1rem; padding:0.9rem 1.1rem;
-        background:rgba(129,140,248,0.06); border:1px solid rgba(129,140,248,0.18);
-        border-radius:12px;
-    }
-    .show-modes-left{display:flex; align-items:center; gap:0.75rem;}
-    .show-modes-icon{font-size:1.3rem; flex-shrink:0;}
-    .show-modes-title{font-size:0.85rem; font-weight:700; color:var(--text);}
-    .show-modes-sub{font-size:0.72rem; color:var(--text-muted); margin-top:0.1rem;}
+        .hint-unlock-wrap.hidden {
+            display: none
+        }
 
-    /* Pill toggle switch */
-    .pill-toggle{position:relative; display:inline-flex; cursor:pointer; flex-shrink:0;}
-    .pill-toggle input{position:absolute; opacity:0; width:0; height:0;}
-    .pill-track{
-        display:block; width:46px; height:26px;
-        background:var(--border); border-radius:999px;
-        transition:background 0.25s;
-        position:relative;
-    }
-    .pill-thumb{
-        position:absolute; top:3px; left:3px;
-        width:20px; height:20px; border-radius:50%;
-        background:#fff; box-shadow:0 1px 4px rgba(0,0,0,0.3);
-        transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
-    }
-    .pill-toggle input:checked ~ .pill-track{background:var(--accent);}
-    .pill-toggle input:checked ~ .pill-track .pill-thumb{transform:translateX(20px);}
+        .hint-unlock-icon {
+            font-size: 1rem;
+            flex-shrink: 0
+        }
+
+        .hint-unlock-wrap input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9rem;
+        }
+
+        .hint-unlock-wrap input::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Show modes row */
+        .show-modes-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.9rem 1.1rem;
+            background: rgba(129, 140, 248, 0.06);
+            border: 1px solid rgba(129, 140, 248, 0.18);
+            border-radius: 12px;
+        }
+
+        .show-modes-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .show-modes-icon {
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .show-modes-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .show-modes-sub {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 0.1rem;
+        }
+
+        /* Pill toggle switch */
+        .pill-toggle {
+            position: relative;
+            display: inline-flex;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .pill-toggle input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .pill-track {
+            display: block;
+            width: 46px;
+            height: 26px;
+            background: var(--border);
+            border-radius: 999px;
+            transition: background 0.25s;
+            position: relative;
+        }
+
+        .pill-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .pill-toggle input:checked~.pill-track {
+            background: var(--accent);
+        }
+
+        .pill-toggle input:checked~.pill-track .pill-thumb {
+            transform: translateX(20px);
+        }
     </style>
 </head>
+
 <body>
 
 
-<div id="toast-container"></div>
-<header>
-    <div class="header-content">
-        <h1>Wordle</h1>
-    </div>
-</header>
+    <div id="toast-container"></div>
+    <header>
+        <div class="header-content">
+            <h1>Wordle</h1>
+        </div>
+    </header>
 
-<main>
-    <div id="game-container" class="hidden">
-        <div id="game-board"></div>
-        <div id="keyboard-container"></div>
-        <button id="hint-button" class="action-button">
-            💡 Hint <span id="hint-count">0</span>
-        </button>
-    </div>
-
-    <div id="creator-container">
-        <div class="creator-header">
-            <h2>Create a Puzzle</h2>
-            <p>Set your word and options, then share the link.</p>
+    <main>
+        <div id="game-container" class="hidden">
+            <div id="game-board"></div>
+            <div id="keyboard-container"></div>
+            <button id="hint-button" class="action-button">
+                💡 Hint <span id="hint-count">0</span>
+            </button>
         </div>
 
-        <div class="input-group">
-            <span class="input-icon">✏️</span>
-            <input type="text" id="custom-word-input" placeholder="Your secret word…">
-        </div>
+        <div id="creator-container">
+            <div class="creator-header">
+                <h2>Create a Puzzle</h2>
+                <p>Set your word and options, then share the link.</p>
+            </div>
 
-        <div class="input-row">
             <div class="input-group">
-                <span class="input-icon">💡</span>
-                <input type="number" id="custom-hints-input" placeholder="Hints" min="0" max="10">
+                <span class="input-icon">✏️</span>
+                <input type="text" id="custom-word-input" placeholder="Your secret word…">
             </div>
-            <div class="input-group">
-                <span class="input-icon">🔁</span>
-                <input type="number" id="custom-guesses-input" placeholder="Guesses" min="1" max="20" value="6">
-            </div>
-        </div>
 
-        <div id="hint-unlock-wrap" class="hint-unlock-wrap hidden">
-            <span class="hint-unlock-icon">🔒</span>
-            <input type="number" id="hiddenhint-after-input" placeholder="Unlock hint after N guesses (optional)" min="1" max="20">
-        </div>
-
-        <div class="input-group">
-            <span class="input-icon">🎯</span>
-            <input type="number" id="custom-plays-input" placeholder="Max attempts (optional)" min="1" max="100">
-        </div>
-
-        <!-- Show Modes standalone toggle -->
-        <div class="show-modes-row">
-            <div class="show-modes-left">
-                <span class="show-modes-icon">👁️</span>
-                <div>
-                    <div class="show-modes-title">Show active modes to player</div>
-                    <div class="show-modes-sub">Player sees which modes are enabled</div>
-                </div>
-            </div>
-            <label class="pill-toggle">
-                <input type="checkbox" id="showmodes-toggle">
-                <span class="pill-track"><span class="pill-thumb"></span></span>
-            </label>
-        </div>
-
-        <div class="toggles-section">
-            <div class="toggles-label">Game Rules</div>
-            <div class="rule-cards-grid">
-                <label class="rule-card" id="glitch-toggle-label">
-                    <input type="checkbox" id="glitch-toggle">
-                    <div class="rule-card-icon">⚡</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Glitch</span><span class="rule-card-sub">Tiles flicker with wrong letters</span></div>
-                    <div class="rule-check"></div>
-                </label>
-
-                <label class="rule-card" id="hide-toggle-label">
-                    <input type="checkbox" id="hide-word-toggle">
-                    <div class="rule-card-icon">🙈</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Hide on loss</span><span class="rule-card-sub">Answer stays secret</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="nofeedback-toggle-label">
-                    <input type="checkbox" id="nofeedback-toggle">
-                    <div class="rule-card-icon">🔇</div>
-                    <div class="rule-card-text"><span class="rule-card-title">No feedback</span><span class="rule-card-sub">No colors revealed</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="nobackspace-toggle-label">
-                    <input type="checkbox" id="nobackspace-toggle">
-                    <div class="rule-card-icon">🚫</div>
-                    <div class="rule-card-text"><span class="rule-card-title">No backspace</span><span class="rule-card-sub">Can't delete letters</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="onestrike-toggle-label">
-                    <input type="checkbox" id="onestrike-toggle">
-                    <div class="rule-card-icon">💀</div>
-                    <div class="rule-card-text"><span class="rule-card-title">One strike</span><span class="rule-card-sub">Wrong guess = over</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="revealfirst-toggle-label">
-                    <input type="checkbox" id="revealfirst-toggle">
-                    <div class="rule-card-icon">🔤</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Reveal first</span><span class="rule-card-sub">First letter is free</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="sharedist-toggle-label">
-                    <input type="checkbox" id="sharedist-toggle">
-                    <div class="rule-card-icon">📊</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Share result</span><span class="rule-card-sub">Emoji grid to copy</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="multiword-toggle-label">
-                    <input type="checkbox" id="multiword-toggle">
-                    <div class="rule-card-icon">🧩</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Multi-word</span><span class="rule-card-sub">Guess two words at once</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="timed-toggle-label">
-                    <input type="checkbox" id="timed-toggle">
-                    <div class="rule-card-icon">⏱</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Timed mode</span><span class="rule-card-sub">Race the clock</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="fibble-toggle-label">
-                    <input type="checkbox" id="fibble-toggle">
-                    <div class="rule-card-icon">🤥</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Fibble</span><span class="rule-card-sub">One color per row lies</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="absurdle-toggle-label">
-                    <input type="checkbox" id="absurdle-toggle">
-                    <div class="rule-card-icon">👾</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Absurdle</span><span class="rule-card-sub">Word shifts to avoid you</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="mirror-toggle-label">
-                    <input type="checkbox" id="mirror-toggle">
-                    <div class="rule-card-icon">🪞</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Mirror</span><span class="rule-card-sub">Green↔Yellow reversed</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="fakenews-toggle-label">
-                    <input type="checkbox" id="fakenews-toggle">
-                    <div class="rule-card-icon">📰</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Fake News</span><span class="rule-card-sub">One random tile lies</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="gaslight-toggle-label">
-                    <input type="checkbox" id="gaslight-toggle">
-                    <div class="rule-card-icon">😵</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Gaslighting</span><span class="rule-card-sub">Word shifts every 3rd guess</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="schrodinger-toggle-label">
-                    <input type="checkbox" id="schrodinger-toggle">
-                    <div class="rule-card-icon">🐱</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Schrödinger</span><span class="rule-card-sub">One slot is two letters at once</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="falsehope-toggle-label">
-                    <input type="checkbox" id="falsehope-toggle">
-                    <div class="rule-card-icon">🌝</div>
-                    <div class="rule-card-text"><span class="rule-card-title">False Hope</span><span class="rule-card-sub">First row fakes 2 yellows</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="mimic-toggle-label">
-                    <input type="checkbox" id="mimic-toggle">
-                    <div class="rule-card-icon">🎭</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Mimic</span><span class="rule-card-sub">Your guess becomes the word</span></div>
-                    <div class="rule-check"></div>
-                </label>
-                <label class="rule-card" id="dictrestrict-toggle-label">
-                    <input type="checkbox" id="dictrestrict-toggle">
-                    <div class="rule-card-icon">📖</div>
-                    <div class="rule-card-text"><span class="rule-card-title">Dict Restrict</span><span class="rule-card-sub">Next guess starts with same letter</span></div>
-                    <div class="rule-check"></div>
-                </label>
-            </div>
-            <div id="multiword-extra" class="rule-extra hidden">
+            <div class="input-row">
                 <div class="input-group">
-                    <span class="input-icon">🧩</span>
-                    <input type="text" id="custom-word2-input" placeholder="Second secret word (same length)…">
+                    <span class="input-icon">💡</span>
+                    <input type="number" id="custom-hints-input" placeholder="Hints" min="0" max="10">
                 </div>
-            </div>
-            <div id="timed-extra" class="rule-extra hidden">
                 <div class="input-group">
-                    <span class="input-icon">⏱</span>
-                    <input type="number" id="custom-timer-input" placeholder="Seconds (e.g. 60)" min="10" max="300" value="60">
+                    <span class="input-icon">🔁</span>
+                    <input type="number" id="custom-guesses-input" placeholder="Guesses" min="1" max="20" value="6">
                 </div>
             </div>
 
+            <div id="hint-unlock-wrap" class="hint-unlock-wrap hidden">
+                <span class="hint-unlock-icon">🔒</span>
+                <input type="number" id="hiddenhint-after-input" placeholder="Unlock hint after N guesses (optional)"
+                    min="1" max="20">
+            </div>
+
+            <div class="input-row">
+                <div class="input-group">
+                    <span class="input-icon">🎯</span>
+                    <input type="number" id="custom-plays-input" placeholder="Max attempts / person" min="1" max="100">
+                </div>
+                <div class="input-group">
+                    <span class="input-icon">👥</span>
+                    <input type="number" id="custom-maxplayers-input" placeholder="Max players (optional)" min="1"
+                        max="10000">
+                </div>
+            </div>
+
+            <!-- Show Modes standalone toggle -->
+            <div class="show-modes-row">
+                <div class="show-modes-left">
+                    <span class="show-modes-icon">👁️</span>
+                    <div>
+                        <div class="show-modes-title">Show active modes to player</div>
+                        <div class="show-modes-sub">Player sees which modes are enabled</div>
+                    </div>
+                </div>
+                <label class="pill-toggle">
+                    <input type="checkbox" id="showmodes-toggle">
+                    <span class="pill-track"><span class="pill-thumb"></span></span>
+                </label>
+            </div>
+
+            <div class="toggles-section">
+                <div class="toggles-label">Game Rules</div>
+                <div class="rule-cards-grid">
+                    <label class="rule-card" id="glitch-toggle-label">
+                        <input type="checkbox" id="glitch-toggle">
+                        <div class="rule-card-icon">⚡</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Glitch</span><span
+                                class="rule-card-sub">Tiles flicker with wrong letters</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+
+                    <label class="rule-card" id="hide-toggle-label">
+                        <input type="checkbox" id="hide-word-toggle">
+                        <div class="rule-card-icon">🙈</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Hide on loss</span><span
+                                class="rule-card-sub">Answer stays secret</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="nofeedback-toggle-label">
+                        <input type="checkbox" id="nofeedback-toggle">
+                        <div class="rule-card-icon">🔇</div>
+                        <div class="rule-card-text"><span class="rule-card-title">No feedback</span><span
+                                class="rule-card-sub">No colors revealed</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="nobackspace-toggle-label">
+                        <input type="checkbox" id="nobackspace-toggle">
+                        <div class="rule-card-icon">🚫</div>
+                        <div class="rule-card-text"><span class="rule-card-title">No backspace</span><span
+                                class="rule-card-sub">Can't delete letters</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="onestrike-toggle-label">
+                        <input type="checkbox" id="onestrike-toggle">
+                        <div class="rule-card-icon">💀</div>
+                        <div class="rule-card-text"><span class="rule-card-title">One strike</span><span
+                                class="rule-card-sub">Wrong guess = over</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="revealfirst-toggle-label">
+                        <input type="checkbox" id="revealfirst-toggle">
+                        <div class="rule-card-icon">🔤</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Reveal first</span><span
+                                class="rule-card-sub">First letter is free</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="sharedist-toggle-label">
+                        <input type="checkbox" id="sharedist-toggle">
+                        <div class="rule-card-icon">📊</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Share result</span><span
+                                class="rule-card-sub">Emoji grid to copy</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="multiword-toggle-label">
+                        <input type="checkbox" id="multiword-toggle">
+                        <div class="rule-card-icon">🧩</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Multi-word</span><span
+                                class="rule-card-sub">Guess two words at once</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="timed-toggle-label">
+                        <input type="checkbox" id="timed-toggle">
+                        <div class="rule-card-icon">⏱</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Timed mode</span><span
+                                class="rule-card-sub">Race the clock</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="fibble-toggle-label">
+                        <input type="checkbox" id="fibble-toggle">
+                        <div class="rule-card-icon">🤥</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Fibble</span><span
+                                class="rule-card-sub">One color per row lies</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="absurdle-toggle-label">
+                        <input type="checkbox" id="absurdle-toggle">
+                        <div class="rule-card-icon">👾</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Absurdle</span><span
+                                class="rule-card-sub">Word shifts to avoid you</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="mirror-toggle-label">
+                        <input type="checkbox" id="mirror-toggle">
+                        <div class="rule-card-icon">🪞</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Mirror</span><span
+                                class="rule-card-sub">Green↔Yellow reversed</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="fakenews-toggle-label">
+                        <input type="checkbox" id="fakenews-toggle">
+                        <div class="rule-card-icon">📰</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Fake News</span><span
+                                class="rule-card-sub">One random tile lies</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="gaslight-toggle-label">
+                        <input type="checkbox" id="gaslight-toggle">
+                        <div class="rule-card-icon">😵</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Gaslighting</span><span
+                                class="rule-card-sub">Word shifts every 3rd guess</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="schrodinger-toggle-label">
+                        <input type="checkbox" id="schrodinger-toggle">
+                        <div class="rule-card-icon">🐱</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Schrödinger</span><span
+                                class="rule-card-sub">One slot is two letters at once</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="falsehope-toggle-label">
+                        <input type="checkbox" id="falsehope-toggle">
+                        <div class="rule-card-icon">🌝</div>
+                        <div class="rule-card-text"><span class="rule-card-title">False Hope</span><span
+                                class="rule-card-sub">First row fakes 2 yellows</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="mimic-toggle-label">
+                        <input type="checkbox" id="mimic-toggle">
+                        <div class="rule-card-icon">🎭</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Mimic</span><span
+                                class="rule-card-sub">Your guess becomes the word</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="dictrestrict-toggle-label">
+                        <input type="checkbox" id="dictrestrict-toggle">
+                        <div class="rule-card-icon">📖</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Dict Restrict</span><span
+                                class="rule-card-sub">Next guess starts with same letter</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                </div>
+                <div id="multiword-extra" class="rule-extra hidden">
+                    <div class="input-group">
+                        <span class="input-icon">🧩</span>
+                        <input type="text" id="custom-word2-input" placeholder="Second secret word (same length)…">
+                    </div>
+                </div>
+                <div id="timed-extra" class="rule-extra hidden">
+                    <div class="input-group">
+                        <span class="input-icon">⏱</span>
+                        <input type="number" id="custom-timer-input" placeholder="Seconds (e.g. 60)" min="10" max="300"
+                            value="60">
+                    </div>
+                </div>
+
+            </div>
+
+            <button id="generate-link-button">Generate Link</button>
+
+            <div id="share-link-container" class="hidden">
+                <p>Your link is ready ✓</p>
+                <input type="text" id="share-link-input" readonly>
+                <button id="copy-link-button">Copy Link</button>
+            </div>
         </div>
+    </main>
 
-        <button id="generate-link-button">Generate Link</button>
-
-        <div id="share-link-container" class="hidden">
-            <p>Your link is ready ✓</p>
-            <input type="text" id="share-link-input" readonly>
-            <button id="copy-link-button">Copy Link</button>
-        </div>
-    </div>
-</main>
-
-<script src="script.obf.js"></script>
+    <script src="script.obf.js"></script>
 </body>
+
 </html>
