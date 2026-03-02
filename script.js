@@ -1,6 +1,15 @@
 document.addEventListener('DOMContentLoaded', function () {
 
     /* ═══════════════════════════════════════════════════════
+       LOCAL DEV FLAG
+       Set to true to bypass all Netlify serverless calls so
+       the game runs fully in-browser without a backend.
+       ⚠️  REVERT TO false BEFORE DEPLOYING TO NETLIFY.
+    ════════════════════════════════════════════════════════ */
+    var LOCAL_DEV = false;
+
+
+    /* ═══════════════════════════════════════════════════════
        CRYPTO — AES-128-GCM with key derivation
        Fragment in URL is a TOKEN, not the key. Key is derived via PBKDF2 so
        copying d + fragment into a script does not reveal the key without this code.
@@ -247,32 +256,55 @@ document.addEventListener('DOMContentLoaded', function () {
                The server stores { used, max } per link and is the single source of truth.
                If the server is unreachable the link is blocked (fail closed = secure). */
             if(maxPlays>0){
-                var linkId=await hashId(frag);
-                var serverBlocked=false;
-                var serverReachable=false;
-                try{
-                    var res=await fetch('/.netlify/functions/play',{
-                        method:'POST',
-                        headers:{'Content-Type':'application/json'},
-                        body:JSON.stringify({id:linkId,max:maxPlays})
-                    });
-                    if(res.ok){
-                        var data=await res.json();
-                        playsUsed=data.used;
-                        serverBlocked=data.blocked;
-                        serverReachable=true;
-                        currentLinkId=linkId;
-                        currentPlayId=data.playId||null;
-                    }
-                }catch(e){}
+                if(LOCAL_DEV){
+                    /* ── LOCAL DEV: simulate attempt counter in localStorage ──────────────
+                       Uses the first 20 chars of the encrypted payload as a stable key.
+                       To reset during testing: DevTools → Application → Local Storage
+                       → delete the "wordle_dev_attempts_*" entry.
+                       NOTE: private tabs share localStorage in most browsers in dev,
+                       but this is intentional — full cross-browser enforcement only
+                       happens on Netlify via the server-side hash counter. */
+                    var devKey='wordle_dev_attempts_'+d.slice(0,20);
+                    var devUsed=parseInt(localStorage.getItem(devKey)||'0',10);
+                    if(devUsed>=maxPlays){showBlockedScreen();return;}
+                    devUsed++;
+                    localStorage.setItem(devKey,devUsed);
+                    playsUsed=devUsed;
+                    currentLinkId=null;
+                    currentPlayId='dev-'+Date.now();
+                } else {
+                    /* ── PRODUCTION: server is the single source of truth ────────────────
+                       linkId = SHA-256(URL fragment) — same hash from ANY browser, tab,
+                       device, or IP, so private tabs / new browsers / VPNs all share
+                       the same server-side counter and cannot bypass the limit. */
+                    var linkId=await hashId(frag);
+                    var serverBlocked=false;
+                    var serverReachable=false;
+                    try{
+                        var res=await fetch('/.netlify/functions/play',{
+                            method:'POST',
+                            headers:{'Content-Type':'application/json'},
+                            body:JSON.stringify({id:linkId,max:maxPlays})
+                        });
+                        if(res.ok){
+                            var data=await res.json();
+                            playsUsed=data.used;
+                            serverBlocked=data.blocked;
+                            serverReachable=true;
+                            currentLinkId=linkId;
+                            currentPlayId=data.playId||null;
+                        }
+                    }catch(e){}
 
-                if(!serverReachable||serverBlocked){showBlockedScreen();return;}
+                    if(!serverReachable||serverBlocked){showBlockedScreen();return;}
+                }
             }
 
-            /* Clear saved board on each new play so the board is always clean */
-            if(maxPlays>0){
-                try{localStorage.removeItem(STORAGE_PROGRESS_PREFIX+frag);}catch(e){}
-            }
+            /* Board state is intentionally NOT cleared on load for max-plays links.
+               Mid-game guesses (submitted, coloured tiles) survive a page refresh.
+               Completed-game state IS still cleared by clearProgress() inside
+               showWinOverlay / showLossOverlay / showGameOverScreen, so a new
+               attempt after a finished game always starts with a clean board. */
 
             /* Progress restore */
             var savedProgress=null;
@@ -331,6 +363,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function reportResult(won,guesses){
+        if(LOCAL_DEV)return; /* LOCAL DEV: skip result reporting */
         if(!currentLinkId||!currentPlayId)return;
         try{fetch('/.netlify/functions/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:currentLinkId,playId:currentPlayId,won:won,guesses:guesses})});}catch(e){}
     }
@@ -1027,13 +1060,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 /* Always link back to the root (index.html), never to creator.html */
                 var link=window.location.origin+'/?d='+d+'#'+secret;
                 /* Register the puzzle server-side for dashboard tracking */
-                try{
-                    var regId=await hashId(secret);
-                    var regPw=sessionStorage.getItem('creator_pw')||'';
-                    fetch('/.netlify/functions/register',{method:'POST',
-                        headers:{'Content-Type':'application/json','x-dashboard-password':regPw},
-                        body:JSON.stringify({id:regId,max:plays,label:label})});
-                }catch(re){}
+                if(!LOCAL_DEV){
+                    /* PRODUCTION: register puzzle with server dashboard */
+                    try{
+                        var regId=await hashId(secret);
+                        var regPw=sessionStorage.getItem('creator_pw')||'';
+                        fetch('/.netlify/functions/register',{method:'POST',
+                            headers:{'Content-Type':'application/json','x-dashboard-password':regPw},
+                            body:JSON.stringify({id:regId,max:plays,label:label})});
+                    }catch(re){}
+                }
                 var sc=document.getElementById('share-link-container'),si=document.getElementById('share-link-input');
                 si.value=link;sc.classList.remove('hidden');
                 var cb=document.getElementById('copy-link-button'),nb=cb.cloneNode(true);
