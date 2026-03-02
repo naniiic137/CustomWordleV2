@@ -106,6 +106,43 @@ document.addEventListener('DOMContentLoaded', function () {
     /* Generate 16-byte key → 22-char base64url secret */
     function genSecret(){return B64.enc(crypto.getRandomValues(new Uint8Array(16)).buffer);}
 
+    /* ─────────────────────────────────────────────────────────
+       PLAYER FINGERPRINT
+       Returns a 64-hex SHA-256 of stable browser properties.
+       Identical between normal and private tabs in the same
+       browser (Chrome/Edge/Safari), so private-tab replays are
+       correctly identified as the same player and get blocked
+       once their personal attempt quota is exhausted.
+    ───────────────────────────────────────────────────────── */
+    async function getPlayerFingerprint(){
+        var parts=[];
+        /* Canvas fingerprint — most distinctive signal */
+        try{
+            var cv=document.createElement('canvas');cv.width=200;cv.height=50;
+            var cx=cv.getContext('2d');
+            cx.textBaseline='top';
+            cx.font='14px Arial';
+            cx.fillStyle='#f60';
+            cx.fillRect(125,1,62,20);
+            cx.fillStyle='#069';
+            cx.fillText('Wordle\uD83C\uDFAE',2,15);
+            cx.fillStyle='rgba(102,204,0,0.7)';
+            cx.fillText('Wordle\uD83C\uDFAE',4,17);
+            parts.push(cv.toDataURL());
+        }catch(e){parts.push('nc');}
+        /* Stable navigator & screen properties */
+        parts.push(navigator.userAgent||'');
+        parts.push(navigator.language||'');
+        parts.push(String(navigator.hardwareConcurrency||0));
+        parts.push(navigator.platform||'');
+        parts.push(screen.width+'x'+screen.height);
+        parts.push(String(screen.colorDepth||0));
+        parts.push(String(new Date().getTimezoneOffset()));
+        var combined=parts.join('\x01');
+        var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(combined));
+        return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+    }
+
     /* ═══════════════════════════════════════════════════════
        ABSURDLE WORD LIST (common 5-letter words)
     ════════════════════════════════════════════════════════ */
@@ -256,15 +293,19 @@ document.addEventListener('DOMContentLoaded', function () {
                The server stores { used, max } per link and is the single source of truth.
                If the server is unreachable the link is blocked (fail closed = secure). */
             if(maxPlays>0){
+                /* Fingerprint this browser so each person gets their own attempt quota.
+                   Same fingerprint in normal + private tabs (Chrome/Edge/Safari) means
+                   a private-tab replay is detected and blocked once quota is exhausted. */
+                var playerFp=await getPlayerFingerprint();
+
                 if(LOCAL_DEV){
-                    /* ── LOCAL DEV: simulate attempt counter in localStorage ──────────────
-                       Uses the first 20 chars of the encrypted payload as a stable key.
-                       To reset during testing: DevTools → Application → Local Storage
-                       → delete the "wordle_dev_attempts_*" entry.
-                       NOTE: private tabs share localStorage in most browsers in dev,
-                       but this is intentional — full cross-browser enforcement only
-                       happens on Netlify via the server-side hash counter. */
-                    var devKey='wordle_dev_attempts_'+d.slice(0,20);
+                    /* ── LOCAL DEV: simulate per-player attempt counter in localStorage ──
+                       Key = first 16 chars of encrypted payload (link) +
+                             first 16 chars of player fingerprint.
+                       Each distinct browser/fingerprint gets its own counter.
+                       To reset: DevTools → Application → Local Storage →
+                                 delete the matching "wordle_dev_*" entry. */
+                    var devKey='wordle_dev_'+d.slice(0,16)+'_'+playerFp.slice(0,16);
                     var devUsed=parseInt(localStorage.getItem(devKey)||'0',10);
                     if(devUsed>=maxPlays){showBlockedScreen();return;}
                     devUsed++;
@@ -273,10 +314,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     currentLinkId=null;
                     currentPlayId='dev-'+Date.now();
                 } else {
-                    /* ── PRODUCTION: server is the single source of truth ────────────────
-                       linkId = SHA-256(URL fragment) — same hash from ANY browser, tab,
-                       device, or IP, so private tabs / new browsers / VPNs all share
-                       the same server-side counter and cannot bypass the limit. */
+                    /* ── PRODUCTION: server tracks each player separately ────────────────
+                       linkId   = SHA-256(URL fragment) — identifies WHICH link
+                       playerFp = SHA-256(browser fingerprint) — identifies WHO
+                       The server enforces maxPlays attempts per player, per link.
+                       Same URL from any browser/tab/IP → same linkId + same fingerprint
+                       → same server-side counter → private-tab or VPN bypass fails. */
                     var linkId=await hashId(frag);
                     var serverBlocked=false;
                     var serverReachable=false;
@@ -284,7 +327,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         var res=await fetch('/.netlify/functions/play',{
                             method:'POST',
                             headers:{'Content-Type':'application/json'},
-                            body:JSON.stringify({id:linkId,max:maxPlays})
+                            body:JSON.stringify({id:linkId,playerId:playerFp,max:maxPlays})
                         });
                         if(res.ok){
                             var data=await res.json();
