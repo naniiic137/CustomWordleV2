@@ -3,21 +3,21 @@ import { getStore } from "@netlify/blobs";
 export default async (req) => {
     if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
-    let id, playerId, max, maxPlayers;
+    let id, playerId, max, maxPlayers, isPing;
     try {
         const body = await req.json();
         id         = String(body.id         || "").trim();
         playerId   = String(body.playerId   || "").trim();
         max        = parseInt(body.max,        10);
         maxPlayers = parseInt(body.maxPlayers, 10) || 0;
+        isPing     = !!body.ping;
     } catch(e) { return new Response("Bad Request", { status: 400 }); }
 
     // id = SHA-256(URL fragment) — identifies the link
-    // playerId = SHA-256(browser fingerprint) — identifies the player
+    // playerId = SHA-256(browser fingerprint + session ID) — identifies the player tab
     if (!id || id.length < 10 || !playerId || playerId.length < 10)
         return new Response("Bad Request", { status: 400 });
 
-    // max = per-player attempts (0 = unlimited per player, only player-cap applies)
     if (isNaN(max)) max = 0;
     if (isNaN(maxPlayers)) maxPlayers = 0;
     if (max < 0 || max > 100) return new Response("Bad Request", { status: 400 });
@@ -49,19 +49,38 @@ export default async (req) => {
             };
         }
 
-        // ALWAYS use server-stored limits after first open (client cannot change them)
-        const storedMax        = meta.max;          // per-player attempt cap (0 = unlimited)
-        const storedMaxPlayers = meta.maxPlayers || 0; // total distinct-player cap (0 = unlimited)
-
-        // Ensure players map exists (backwards-compat if old flat format is loaded)
+        const storedMax        = meta.max;
+        const storedMaxPlayers = meta.maxPlayers || 0;
         if (!meta.players) meta.players = {};
 
-        const isNewPlayer = !meta.players[playerId];
+        // ── HANDLE PING ────────────────────────────────────────────────────────────
+        // If this is just a background heartbeat, update lastPing and exit early.
+        if (isPing) {
+            if (meta.players[playerId]) {
+                meta.players[playerId].lastPing = Date.now();
+                await store.set(`meta:${id}`, JSON.stringify(meta));
+            }
+            return Response.json({ ok: true });
+        }
 
-        // ── Check total-player cap (new players only) ──────────────────────────────
+        const isNewPlayer = !meta.players[playerId];
+        const now = Date.now();
+
+        // ── Check Lobby (active total-player cap) ──────────────────────────────────
         if (isNewPlayer && storedMaxPlayers > 0) {
-            const playerCount = Object.keys(meta.players).length;
-            if (playerCount >= storedMaxPlayers) {
+            // Count players who have pinged within the last 20 seconds.
+            // If they closed the tab, their ping will be older, freeing their slot.
+            let activeCount = 0;
+            for (const pid in meta.players) {
+                const p = meta.players[pid];
+                // Support legacy plays without lastPing by defaulting to lastSeen
+                const lastActive = p.lastPing || p.lastSeen || 0;
+                if (now - lastActive < 20000) {
+                    activeCount++;
+                }
+            }
+
+            if (activeCount >= storedMaxPlayers) {
                 return Response.json({ used: 0, blocked: true, reason: "player_limit" });
             }
         }
@@ -69,22 +88,28 @@ export default async (req) => {
         // Get or create this player's record
         let player = meta.players[playerId];
         if (!player) {
-            player = { attempts: 0, firstSeen: Date.now(), lastSeen: Date.now(), ip: maskedIp, plays: [] };
+            player = { attempts: 0, firstSeen: now, lastSeen: now, lastPing: now, ip: maskedIp, plays: [] };
         }
 
         // ── Check per-player attempt cap ───────────────────────────────────────────
         if (storedMax > 0 && player.attempts >= storedMax) {
+            // Update ping even if blocked, so they don't immediately drop from lobby screen
+            player.lastPing = now;
+            meta.players[playerId] = player;
+            await store.set(`meta:${id}`, JSON.stringify(meta));
+
             return Response.json({ used: player.attempts, blocked: true, reason: "attempt_limit" });
         }
 
         // Consume one attempt for this player
-        const playId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const playId = `${now}-${Math.random().toString(36).slice(2, 8)}`;
         player.attempts++;
-        player.lastSeen = Date.now();
+        player.lastSeen = now;
+        player.lastPing = now; // Mark as active in the lobby
         player.ip = maskedIp;
         player.plays.push({
             playId,
-            openedAt: Date.now(),
+            openedAt: now,
             finishedAt: null,
             won: null,
             guesses: null,
@@ -95,7 +120,7 @@ export default async (req) => {
         await store.set(`meta:${id}`, JSON.stringify(meta));
 
         return Response.json({
-            used: player.attempts,                  // this player's attempts used (incl. this one)
+            used: player.attempts,
             blocked: false,
             playId,
             remaining: storedMax > 0 ? storedMax - player.attempts : null
