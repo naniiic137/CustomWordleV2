@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', function () {
        the game runs fully in-browser without a backend.
        ⚠️  REVERT TO false BEFORE DEPLOYING TO NETLIFY.
     ════════════════════════════════════════════════════════ */
-    var LOCAL_DEV = true;
+    var LOCAL_DEV = false;
 
 
     /* ═══════════════════════════════════════════════════════
