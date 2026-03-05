@@ -3,19 +3,18 @@ import { getStore } from "@netlify/blobs";
 export default async (req) => {
     if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
-    let id, playerId, max, maxPlayers, isPing;
+    let id, stableId, sessionId, max, maxPlayers, isPing;
     try {
         const body = await req.json();
         id         = String(body.id         || "").trim();
-        playerId   = String(body.playerId   || "").trim();
+        stableId   = String(body.stableId   || "").trim();   // hardware fingerprint (same in private tabs)
+        sessionId  = String(body.sessionId  || "").trim();   // per-tab fingerprint (includes sessionStorage ID)
         max        = parseInt(body.max,        10);
         maxPlayers = parseInt(body.maxPlayers, 10) || 0;
         isPing     = !!body.ping;
     } catch(e) { return new Response("Bad Request", { status: 400 }); }
 
-    // id = SHA-256(URL fragment) — identifies the link
-    // playerId = SHA-256(browser fingerprint + session ID) — identifies the player tab
-    if (!id || id.length < 10 || !playerId || playerId.length < 10)
+    if (!id || id.length < 10 || !stableId || stableId.length < 10 || !sessionId || sessionId.length < 10)
         return new Response("Bad Request", { status: 400 });
 
     if (isNaN(max)) max = 0;
@@ -31,7 +30,6 @@ export default async (req) => {
     try {
         const store = getStore({ name: "wordle", consistency: "strong" });
 
-        // Load or create the per-link meta record
         let meta = null;
         try {
             const raw = await store.get(`meta:${id}`, { type: "text" });
@@ -39,75 +37,82 @@ export default async (req) => {
         } catch(e) {}
 
         if (!meta) {
-            // First ever open of this link — lock in both limits from the creator's config
             meta = {
                 max,
                 maxPlayers: maxPlayers || 0,
                 label: "Untitled",
                 created: Date.now(),
-                players: {}
+                // Two separate tracking maps:
+                // attempts: { stableId → { attempts, plays[] } }  — per-person attempt quota
+                // sessions: { sessionId → { lastPing } }          — active lobby seats
+                attempts: {},
+                sessions: {}
             };
         }
 
         const storedMax        = meta.max;
         const storedMaxPlayers = meta.maxPlayers || 0;
-        if (!meta.players) meta.players = {};
+        if (!meta.attempts) meta.attempts = {};
+        if (!meta.sessions) meta.sessions = {};
+        // Migrate old single "players" map to new "attempts" map
+        if (meta.players && !Object.keys(meta.attempts).length) {
+            meta.attempts = meta.players;
+            delete meta.players;
+        }
+
+        const now = Date.now();
 
         // ── HANDLE PING ────────────────────────────────────────────────────────────
-        // If this is just a background heartbeat, update lastPing and exit early.
         if (isPing) {
-            if (meta.players[playerId]) {
-                meta.players[playerId].lastPing = Date.now();
-                await store.set(`meta:${id}`, JSON.stringify(meta));
+            if (meta.sessions[sessionId]) {
+                meta.sessions[sessionId].lastPing = now;
+            } else {
+                meta.sessions[sessionId] = { lastPing: now, stableId };
             }
+            await store.set(`meta:${id}`, JSON.stringify(meta));
             return Response.json({ ok: true });
         }
 
-        const isNewPlayer = !meta.players[playerId];
-        const now = Date.now();
-
-        // ── Check Lobby (active total-player cap) ──────────────────────────────────
-        if (isNewPlayer && storedMaxPlayers > 0) {
-            // Count players who have pinged within the last 20 seconds.
-            // If they closed the tab, their ping will be older, freeing their slot.
-            let activeCount = 0;
-            for (const pid in meta.players) {
-                const p = meta.players[pid];
-                // Support legacy plays without lastPing by defaulting to lastSeen
-                const lastActive = p.lastPing || p.lastSeen || 0;
-                if (now - lastActive < 20000) {
-                    activeCount++;
-                }
-            }
-
-            if (activeCount >= storedMaxPlayers) {
-                return Response.json({ used: 0, blocked: true, reason: "player_limit" });
-            }
+        // ── 1) CHECK PER-PLAYER ATTEMPT LIMIT (using stableId) ─────────────────────
+        // stableId is the HARDWARE fingerprint — identical across normal & private tabs.
+        // This means private tabs CANNOT bypass the attempt limit.
+        let playerRecord = meta.attempts[stableId];
+        if (!playerRecord) {
+            playerRecord = { attempts: 0, firstSeen: now, lastSeen: now, ip: maskedIp, plays: [] };
         }
 
-        // Get or create this player's record
-        let player = meta.players[playerId];
-        if (!player) {
-            player = { attempts: 0, firstSeen: now, lastSeen: now, lastPing: now, ip: maskedIp, plays: [] };
-        }
-
-        // ── Check per-player attempt cap ───────────────────────────────────────────
-        if (storedMax > 0 && player.attempts >= storedMax) {
-            // Update ping even if blocked, so they don't immediately drop from lobby screen
-            player.lastPing = now;
-            meta.players[playerId] = player;
+        if (storedMax > 0 && playerRecord.attempts >= storedMax) {
+            // Update session ping even when blocked so the lobby seat remains occupied
+            meta.sessions[sessionId] = { lastPing: now, stableId };
+            meta.attempts[stableId] = playerRecord;
             await store.set(`meta:${id}`, JSON.stringify(meta));
-
-            return Response.json({ used: player.attempts, blocked: true, reason: "attempt_limit" });
+            return Response.json({ used: playerRecord.attempts, blocked: true, reason: "attempt_limit" });
         }
 
-        // Consume one attempt for this player
+        // ── 2) CHECK LOBBY CAPACITY (using sessionId) ─────────────────────────────
+        // sessionId is unique per tab — each tab occupies one "seat".
+        // When a tab closes, its heartbeat stops and the session expires after 20s.
+        const isNewSession = !meta.sessions[sessionId];
+        if (isNewSession && storedMaxPlayers > 0) {
+            let activeSessions = 0;
+            for (const sid in meta.sessions) {
+                const s = meta.sessions[sid];
+                if (now - (s.lastPing || 0) < 20000) activeSessions++;
+            }
+            if (activeSessions >= storedMaxPlayers) {
+                return Response.json({ used: playerRecord.attempts, blocked: true, reason: "player_limit" });
+            }
+        }
+
+        // Register this session as active
+        meta.sessions[sessionId] = { lastPing: now, stableId };
+
+        // ── 3) CONSUME ONE ATTEMPT ─────────────────────────────────────────────────
         const playId = `${now}-${Math.random().toString(36).slice(2, 8)}`;
-        player.attempts++;
-        player.lastSeen = now;
-        player.lastPing = now; // Mark as active in the lobby
-        player.ip = maskedIp;
-        player.plays.push({
+        playerRecord.attempts++;
+        playerRecord.lastSeen = now;
+        playerRecord.ip = maskedIp;
+        playerRecord.plays.push({
             playId,
             openedAt: now,
             finishedAt: null,
@@ -116,14 +121,14 @@ export default async (req) => {
             completed: false
         });
 
-        meta.players[playerId] = player;
+        meta.attempts[stableId] = playerRecord;
         await store.set(`meta:${id}`, JSON.stringify(meta));
 
         return Response.json({
-            used: player.attempts,
+            used: playerRecord.attempts,
             blocked: false,
             playId,
-            remaining: storedMax > 0 ? storedMax - player.attempts : null
+            remaining: storedMax > 0 ? storedMax - playerRecord.attempts : null
         });
 
     } catch(e) {

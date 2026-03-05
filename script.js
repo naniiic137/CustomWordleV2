@@ -113,14 +113,19 @@ document.addEventListener('DOMContentLoaded', function () {
     function genSecret(){return B64.enc(crypto.getRandomValues(new Uint8Array(16)).buffer);}
 
     /* ─────────────────────────────────────────────────────────
-       PLAYER FINGERPRINT
-       Returns a 64-hex SHA-256 of stable browser properties.
-       Identical between normal and private tabs in the same
-       browser (Chrome/Edge/Safari), so private-tab replays are
-       correctly identified as the same player and get blocked
-       once their personal attempt quota is exhausted.
+       PLAYER FINGERPRINTS
+       Two IDs serve different purposes:
+
+       1) STABLE fingerprint — canvas + hardware + screen props.
+          Identical between normal and private tabs in the same
+          browser.  Used for ATTEMPT TRACKING so private tabs
+          CANNOT bypass the attempt limit.
+
+       2) SESSION fingerprint — stable + sessionStorage ID.
+          Different per tab.  Used only for the LOBBY seat count
+          so each tab occupies its own "seat".
     ───────────────────────────────────────────────────────── */
-    async function getPlayerFingerprint(){
+    function _collectStableParts(){
         var parts=[];
         /* Canvas fingerprint — most distinctive signal */
         try{
@@ -136,11 +141,6 @@ document.addEventListener('DOMContentLoaded', function () {
             cx.fillText('Wordle\uD83C\uDFAE',4,17);
             parts.push(cv.toDataURL());
         }catch(e){parts.push('nc');}
-        /* Local Session ID — differentiates tabs so multiple tabs don't occupy a single lobby slot */
-        var sid=sessionStorage.getItem('wordle_session_id');
-        if(!sid){sid=Math.random().toString(36).slice(2,10);try{sessionStorage.setItem('wordle_session_id',sid);}catch(e){}}
-        parts.push(sid);
-
         /* Stable navigator & screen properties */
         parts.push(navigator.userAgent||'');
         parts.push(navigator.language||'');
@@ -149,9 +149,24 @@ document.addEventListener('DOMContentLoaded', function () {
         parts.push(screen.width+'x'+screen.height);
         parts.push(String(screen.colorDepth||0));
         parts.push(String(new Date().getTimezoneOffset()));
+        return parts;
+    }
+    async function _hashParts(parts){
         var combined=parts.join('\x01');
         var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(combined));
         return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+    }
+    /* STABLE — same in private tabs → enforces attempt limits */
+    async function getStableFingerprint(){
+        return _hashParts(_collectStableParts());
+    }
+    /* SESSION — unique per tab → enforces lobby seat count */
+    async function getSessionFingerprint(){
+        var parts=_collectStableParts();
+        var sid=sessionStorage.getItem('wordle_session_id');
+        if(!sid){sid=Math.random().toString(36).slice(2,10);try{sessionStorage.setItem('wordle_session_id',sid);}catch(e){}}
+        parts.push(sid);
+        return _hashParts(parts);
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -304,54 +319,51 @@ document.addEventListener('DOMContentLoaded', function () {
                The server stores { used, max } per link and is the single source of truth.
                If the server is unreachable the link is blocked (fail closed = secure). */
             if(maxPlays>0||maxPlayersLimit>0){
-                /* Fingerprint this browser so each person gets their own attempt quota.
-                   Same fingerprint in normal + private tabs (Chrome/Edge/Safari) means
-                   a private-tab replay is detected and blocked once quota is exhausted. */
-                var playerFp=await getPlayerFingerprint();
+                /* Two fingerprints:
+                   stableFp  = hardware-only, same in private tabs → attempt tracking
+                   sessionFp = adds sessionStorage ID, unique per tab → lobby seats */
+                var stableFp=await getStableFingerprint();
+                var sessionFp=await getSessionFingerprint();
                 var pingInterval=10000;
 
                 if(LOCAL_DEV){
-                    /* ── LOCAL DEV: simulate lobby pinging and per-player caps ──
-                       devKey     = per-player attempt counter
-                       playersKey = map of { fingerprint: lastPingTime } */
-                    var devKey='wordle_dev_'+d.slice(0,16)+'_'+playerFp.slice(0,16);
+                    /* ── LOCAL DEV: simulate attempt + lobby caps ── */
+                    var stableShort=stableFp.slice(0,16);
+                    var sessionShort=sessionFp.slice(0,16);
+
+                    /* Per-player attempt counter (keyed by STABLE fp) */
+                    var devKey='wordle_dev_'+d.slice(0,16)+'_'+stableShort;
                     var devUsed=parseInt(localStorage.getItem(devKey)||'0',10);
 
+                    /* Check per-player attempt cap FIRST (stable fp — private tabs share this) */
+                    if(maxPlays>0&&devUsed>=maxPlays){showBlockedScreen();return;}
+
+                    /* Lobby seat count (keyed by SESSION fp) */
                     var playersKey='wordle_dev_pl_'+d.slice(0,16);
                     var seenPlayers=JSON.parse(localStorage.getItem(playersKey)||'{}');
                     var now=Date.now();
-                    var fpShort=playerFp.slice(0,16);
-
-                    /* Check total-player lobby cap first */
-                    if(devUsed===0&&maxPlayersLimit>0){
-                        if(!seenPlayers[fpShort]){
-                            /* Clean up expired pings (>20s old) to find active count */
-                            var activeCount=0;
-                            for(var k in seenPlayers){if(now-seenPlayers[k]<20000)activeCount++;}
-                            if(activeCount>=maxPlayersLimit){showBlockedScreen();return;}
-                        }
+                    if(maxPlayersLimit>0&&!seenPlayers[sessionShort]){
+                        var activeCount=0;
+                        for(var k in seenPlayers){if(now-seenPlayers[k]<20000)activeCount++;}
+                        if(activeCount>=maxPlayersLimit){showBlockedScreen();return;}
                     }
-
-                    /* Mark this player as active right now */
-                    seenPlayers[fpShort]=now;
+                    seenPlayers[sessionShort]=now;
                     localStorage.setItem(playersKey,JSON.stringify(seenPlayers));
 
-                    /* Check per-player attempt cap */
-                    if(maxPlays>0&&devUsed>=maxPlays){showBlockedScreen();return;}
                     if(maxPlays>0){devUsed++;localStorage.setItem(devKey,devUsed);}
                     playsUsed=devUsed;
                     currentLinkId=null;
                     currentPlayId='dev-'+Date.now();
 
-                    /* Start local Ping loop */
+                    /* Ping loop (lobby heartbeat) */
                     setInterval(function(){
                         var p=JSON.parse(localStorage.getItem(playersKey)||'{}');
-                        p[fpShort]=Date.now();
+                        p[sessionShort]=Date.now();
                         localStorage.setItem(playersKey,JSON.stringify(p));
                     },pingInterval);
 
                 } else {
-                    /* ── PRODUCTION: server tracks players and handles ping ──────────────── */
+                    /* ── PRODUCTION: server uses stableFp for attempts, sessionFp for lobby ── */
                     var linkId=await hashId(frag);
                     var serverBlocked=false;
                     var serverReachable=false;
@@ -359,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         var res=await fetch('/.netlify/functions/play',{
                             method:'POST',
                             headers:{'Content-Type':'application/json'},
-                            body:JSON.stringify({id:linkId,playerId:playerFp,max:maxPlays,maxPlayers:maxPlayersLimit})
+                            body:JSON.stringify({id:linkId,stableId:stableFp,sessionId:sessionFp,max:maxPlays,maxPlayers:maxPlayersLimit})
                         });
                         if(res.ok){
                             var data=await res.json();
@@ -373,9 +385,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     if(!serverReachable||serverBlocked){showBlockedScreen();return;}
 
-                    /* Start production Ping loop */
+                    /* Lobby ping loop */
                     setInterval(function(){
-                        fetch('/.netlify/functions/play',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:linkId,playerId:playerFp,ping:true})}).catch(function(){});
+                        fetch('/.netlify/functions/play',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:linkId,stableId:stableFp,sessionId:sessionFp,ping:true})}).catch(function(){});
                     },pingInterval);
                 }
             }
