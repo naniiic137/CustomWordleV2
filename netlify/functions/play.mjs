@@ -3,6 +3,10 @@ import { getStore } from "@netlify/blobs";
 export default async (req) => {
     if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
+    /* Reject oversized payloads to prevent abuse */
+    const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
+    if (contentLength > 4096) return new Response("Payload Too Large", { status: 413 });
+
     let id, stableId, sessionId, max, maxPlayers, isPing;
     try {
         const body = await req.json();
@@ -13,6 +17,10 @@ export default async (req) => {
         maxPlayers = parseInt(body.maxPlayers, 10) || 0;
         isPing     = !!body.ping;
     } catch(e) { return new Response("Bad Request", { status: 400 }); }
+
+    /* Validate input lengths to prevent storage abuse */
+    if (id.length > 128 || stableId.length > 128 || sessionId.length > 128)
+        return new Response("Bad Request", { status: 400 });
 
     if (!id || id.length < 10 || !stableId || stableId.length < 10 || !sessionId || sessionId.length < 10)
         return new Response("Bad Request", { status: 400 });
@@ -26,6 +34,27 @@ export default async (req) => {
             || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
             || "unknown";
     const maskedIp = ip.replace(/(\d+\.\d+)\.\d+\.\d+/, "$1.x.x");
+
+    /* ── IP-based rate limiting: max 30 play requests per IP per minute ── */
+    try {
+        const rlStore = getStore({ name: "wordle-ratelimit", consistency: "strong" });
+        const rlKey = `rl:${ip}`;
+        let rl = null;
+        try {
+            const raw = await rlStore.get(rlKey, { type: "text" });
+            if (raw) rl = JSON.parse(raw);
+        } catch(e) {}
+        const now0 = Date.now();
+        if (!rl || now0 - rl.windowStart > 60000) {
+            rl = { windowStart: now0, count: 1 };
+        } else {
+            rl.count++;
+        }
+        await rlStore.set(rlKey, JSON.stringify(rl));
+        if (rl.count > 30) {
+            return new Response("Too Many Requests", { status: 429 });
+        }
+    } catch(e) { /* rate limit store failure is non-fatal */ }
 
     try {
         const store = getStore({ name: "wordle", consistency: "strong" });
@@ -61,6 +90,11 @@ export default async (req) => {
         }
 
         const now = Date.now();
+
+        // ── CLEANUP: prune sessions older than 5 minutes to prevent unbounded growth ──
+        for (const sid in meta.sessions) {
+            if (now - (meta.sessions[sid].lastPing || 0) > 300000) delete meta.sessions[sid];
+        }
 
         // ── HANDLE PING ────────────────────────────────────────────────────────────
         if (isPing) {
