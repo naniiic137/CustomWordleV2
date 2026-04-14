@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var flags2=(cfg.fibble?1:0)|(cfg.absurdle?2:0)|(cfg.mirror?4:0)|(cfg.fakenews?8:0)|(cfg.gaslight?16:0)|(cfg.schrodinger?32:0)|(cfg.falsehope?64:0)|(cfg.mimic?128:0);
         var mp=cfg.maxPlayers||0;
         /* flags3 bit layout: 1=showModes, 2=dictRestrict, 4=glitch, 8=hasMaxPlayers */
-        var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0)|(mp>0?8:0)|(cfg.numberMode?16:0);
+        var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0)|(mp>0?8:0)|(cfg.numberMode?16:0)|(cfg.noReuse?32:0)|(cfg.blind?64:0);
         var t=cfg.timer||0;
         var header=[];
         header.push(w.length);
@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return{word:w,word2:w2,hide:!!(f&1),nocol:!!(f&2),nobk:!!(f&4),one:!!(f&8),rf:!!(f&16),sd:!!(f&32),timed:!!(f&128),
                fibble:!!(f2&1),absurdle:!!(f2&2),mirror:!!(f2&4),fakenews:!!(f2&8),gaslight:!!(f2&16),schrodinger:!!(f2&32),falsehope:!!(f2&64),mimic:!!(f2&128),
                showModes:!!(f3&1),dictRestrict:!!(f3&2),glitch:!!(f3&4),
-               numberMode:!!(f3&16),
+               numberMode:!!(f3&16),noReuse:!!(f3&32),blind:!!(f3&64),
                hints:hints,guesses:guesses,plays:plays,used:used,timer:timer,hintUnlock:hintUnlock,maxPlayers:maxPlayers,savedGuesses:savedGuesses,savedGuesses2:savedGuesses2};
     }
 
@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── New mode flags ── */
     var fibbleMode=false,absurdleMode=false,mirrorMode=false,fakeNewsMode=false;
     var gaslightMode=false,schrodingerMode=false,falseHopeMode=false,mimicMode=false;
-    var dictRestrictMode=false,glitchMode=false,numberMode=false;
+    var dictRestrictMode=false,glitchMode=false,numberMode=false,noReuseMode=false,blindMode=false;
     var hintUnlockAfter=0,showModesFlag=false;
     var glitchInterval=null;
     /* Absurdle: surviving word candidates */
@@ -307,7 +307,7 @@ document.addEventListener('DOMContentLoaded', function () {
             /* New mode flags */
             fibbleMode=cfg.fibble;absurdleMode=cfg.absurdle;mirrorMode=cfg.mirror;fakeNewsMode=cfg.fakenews;
             gaslightMode=cfg.gaslight;schrodingerMode=cfg.schrodinger;falseHopeMode=cfg.falsehope;mimicMode=cfg.mimic;
-            dictRestrictMode=cfg.dictRestrict;glitchMode=cfg.glitch;numberMode=cfg.numberMode;
+            dictRestrictMode=cfg.dictRestrict;glitchMode=cfg.glitch;numberMode=cfg.numberMode;noReuseMode=cfg.noReuse;blindMode=cfg.blind;
             hintUnlockAfter=cfg.hintUnlock||0;showModesFlag=cfg.showModes;
 
             /* Absurdle: init candidates to full word list, ensure creator's word is included */
@@ -567,7 +567,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         var cls=entry.s==='correct'?'correct':entry.s==='present'?'present':'absent';
                         tile.classList.add(noColorFeedback?(entry.s==='correct'?'correct':'absent-silent'):cls);
                     }
-                    if(entry.l&&!noColorFeedback){
+                    if(entry.l&&!noColorFeedback&&!blindMode){
                         var kEl=document.getElementById('key-'+entry.l);
                         if(kEl){
                             var rank=function(s){return s==='correct'?2:s==='present'?1:0;};
@@ -694,6 +694,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if(dictRestrictMode)modes.push('📖 Dict Restrict');
         if(glitchMode)modes.push('👾 Glitch');
         if(numberMode)modes.push('🔢 Number Mode');
+        if(noReuseMode)modes.push('🔒 No Reuse');
+        if(blindMode)modes.push('👁️‍🗨️ Blind');
         if(hintUnlockAfter>0)modes.push('🔒 Hint after '+hintUnlockAfter);
         if(!modes.length)return;
         var bar=document.createElement('div');bar.className='mode-bar';
@@ -915,6 +917,21 @@ function createKeyboard(){
             }
         }
 
+        /* ── No Reuse: can't use letters marked as absent ── */
+        if(noReuseMode){
+            var invalidLetters=[];
+            for(var i=0;i<guess.length;i++){
+                var letter=guess[i];
+                var k=document.getElementById('key-'+letter);
+                if(k&&k.classList.contains('absent')&&!k.classList.contains('correct')&&!k.classList.contains('present')){
+                    invalidLetters.push(letter);
+                }
+            }
+            if(invalidLetters.length>0){
+                shakeRow('Letter "'+invalidLetters[0]+'" already absent');return;
+            }
+        }
+
         var result=scoreGuess(guess,targetWord);result=applyModeScore(result,guess,currentRow);guessGrid.push(result.slice());
         saveProgress();
         revealTiles('tile',guess.split(''),result,function(w){checkSingleState(w);});
@@ -1063,8 +1080,10 @@ function createKeyboard(){
             setTimeout(function(){
                 var tile=document.getElementById(prefix+'-'+currentRow+'-'+i);
                 if(tile){tile.classList.add('flip');setTimeout(function(){tile.classList.add(noColorFeedback?(status==='correct'?'correct':'absent-silent'):status);},250);}
-                var kEl=document.getElementById('key-'+letter);
-                if(kEl){var rank=function(s){return s==='correct'?2:s==='present'?1:0;};if(!noColorFeedback){if(rank(status)>rank(kEl.dataset.status||'')){kEl.classList.remove('present','absent','correct');kEl.classList.add(status);kEl.dataset.status=status;}}else if(status==='correct'){kEl.classList.remove('present','absent','correct');kEl.classList.add('correct');kEl.dataset.status='correct';}}
+                if(!blindMode){
+                    var kEl=document.getElementById('key-'+letter);
+                    if(kEl){var rank=function(s){return s==='correct'?2:s==='present'?1:0;};if(!noColorFeedback){if(rank(status)>rank(kEl.dataset.status||'')){kEl.classList.remove('present','absent','correct');kEl.classList.add(status);kEl.dataset.status=status;}}else if(status==='correct'){kEl.classList.remove('present','absent','correct');kEl.classList.add('correct');kEl.dataset.status='correct';}}
+                }
                 if(i===wordLength-1)setTimeout(function(){if(callback)callback(isWin);},50);
             },i*300);
         });
@@ -1118,6 +1137,7 @@ function createKeyboard(){
             {check:'gaslight-toggle',label:'gaslight-toggle-label'},{check:'schrodinger-toggle',label:'schrodinger-toggle-label'},
             {check:'falsehope-toggle',label:'falsehope-toggle-label'},{check:'mimic-toggle',label:'mimic-toggle-label'},
             {check:'dictrestrict-toggle',label:'dictrestrict-toggle-label'},{check:'glitch-toggle',label:'glitch-toggle-label'},
+            {check:'noreuse-toggle',label:'noreuse-toggle-label'},{check:'blind-toggle',label:'blind-toggle-label'},
             {check:'numbermode-toggle',label:'numbermode-toggle-label'},{check:'showmodes-toggle',label:'showmodes-toggle-label'},
             {check:'hiddenhint-toggle',label:'hiddenhint-toggle-label'}
         ];
@@ -1201,9 +1221,11 @@ var cfg={word:word,word2:word2,hints:hints,guesses:guesses,plays:plays,used:0,
                          schrodinger:document.getElementById('schrodinger-toggle')&&document.getElementById('schrodinger-toggle').checked,
                          falsehope:document.getElementById('falsehope-toggle')&&document.getElementById('falsehope-toggle').checked,
                          mimic:document.getElementById('mimic-toggle')&&document.getElementById('mimic-toggle').checked,
-                         dictRestrict:document.getElementById('dictrestrict-toggle')&&document.getElementById('dictrestrict-toggle').checked,
-                         glitch:document.getElementById('glitch-toggle')&&document.getElementById('glitch-toggle').checked,
-                         numberMode:numberMode,
+dictRestrict:document.getElementById('dictrestrict-toggle')&&document.getElementById('dictrestrict-toggle').checked,
+                          glitch:document.getElementById('glitch-toggle')&&document.getElementById('glitch-toggle').checked,
+                          noReuse:document.getElementById('noreuse-toggle')&&document.getElementById('noreuse-toggle').checked,
+                          blind:document.getElementById('blind-toggle')&&document.getElementById('blind-toggle').checked,
+                          numberMode:numberMode,
                          showModes:document.getElementById('showmodes-toggle')&&document.getElementById('showmodes-toggle').checked,
                          hintUnlock:(function(){var v=parseInt((document.getElementById('hiddenhint-after-input')||{}).value,10);return(v>0&&parseInt(document.getElementById('custom-hints-input').value,10)>0)?v:0;})()};
                 var d=await seal(pack(cfg),keyBuf);
