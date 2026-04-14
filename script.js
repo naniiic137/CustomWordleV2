@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', function () {
        CRYPTO — AES-128-GCM with key derivation
        Fragment in URL is a TOKEN, not the key. Key is derived via PBKDF2 so
        copying d + fragment into a script does not reveal the key without this code.
-       URL: ?d=[iv(8)+ct+tag]base64url  #[token(16)]base64url
+       URL: ?d=[iv(12)+ct+tag]base64url  #[token(16)]base64url
     ════════════════════════════════════════════════════════ */
 
     var B64={
@@ -41,23 +41,29 @@ document.addEventListener('DOMContentLoaded', function () {
         return crypto.subtle.importKey('raw',keyBuf,{name:'AES-GCM',length:128},false,['encrypt','decrypt']);
     }
 
-    /* Encrypt: returns base64url of [iv(8)][ciphertext+tag] */
+    /* Encrypt: returns base64url of [iv(12)][ciphertext+tag] */
     async function seal(plain,keyBuf){
-        var iv=crypto.getRandomValues(new Uint8Array(8));
+        var iv=crypto.getRandomValues(new Uint8Array(12));
         var key=await importKey(keyBuf);
         var ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv,tagLength:128},key,plain);
-        var out=new Uint8Array(8+ct.byteLength);
-        out.set(iv,0);out.set(new Uint8Array(ct),8);
+        var out=new Uint8Array(12+ct.byteLength);
+        out.set(iv,0);out.set(new Uint8Array(ct),12);
         return B64.enc(out.buffer);
     }
 
-    /* Decrypt: base64url → Uint8Array */
+    /* Decrypt: base64url → Uint8Array. Tries 12-byte IV first, falls back to 8-byte for old links. */
     async function unseal(b64,keyBuf){
         var packed=new Uint8Array(B64.dec(b64));
-        var iv=packed.slice(0,8),ct=packed.slice(8);
         var key=await importKey(keyBuf);
-        var plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:iv,tagLength:128},key,ct);
-        return new Uint8Array(plain);
+        try{
+            var iv12=packed.slice(0,12),ct12=packed.slice(12);
+            var plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:iv12,tagLength:128},key,ct12);
+            return new Uint8Array(plain);
+        }catch(e){
+            var iv8=packed.slice(0,8),ct8=packed.slice(8);
+            var plain2=await crypto.subtle.decrypt({name:'AES-GCM',iv:iv8,tagLength:128},key,ct8);
+            return new Uint8Array(plain2);
+        }
     }
 
     /* Pack config to binary. */
@@ -448,15 +454,29 @@ document.addEventListener('DOMContentLoaded', function () {
        SCREENS
     ════════════════════════════════════════════════════════ */
 
+    function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
     function showBlockedScreen(){
+        isGameOver=true;
+        /* Remove all event listeners by replacing body content */
         document.body.innerHTML='';
+        /* Kill any running timers */
+        if(timerInterval){clearInterval(timerInterval);timerInterval=null;}
+        if(glitchInterval){clearInterval(glitchInterval);glitchInterval=null;}
+        /* Remove keyboard listener */
+        document.removeEventListener('keydown',handleKeyPress);
         var o=buildOverlay({icon:'🔒',title:'No Attempts Left',body:"You\u2019ve used all your allowed attempts.",sub:'Ask the creator to send you a fresh link.',btnText:null});
         o.classList.add('visible');document.body.appendChild(o);
+        /* Prevent restoring the page via console */
+        Object.defineProperty(document.body,'innerHTML',{set:function(){},configurable:false});
     }
 
+    var _resultReported=false;
     function reportResult(won,guesses){
         if(LOCAL_DEV)return; /* LOCAL DEV: skip result reporting */
         if(!currentLinkId||!currentPlayId)return;
+        if(_resultReported)return; /* prevent duplicate/forged reports */
+        _resultReported=true;
         try{fetch('/.netlify/functions/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:currentLinkId,playId:currentPlayId,won:won,guesses:guesses})});}catch(e){}
     }
 
@@ -465,7 +485,7 @@ document.addEventListener('DOMContentLoaded', function () {
         reportResult(isWin, isWin ? currentRow+1 : maxGuesses);
         var left=maxPlays-playsUsed,icon,title,body,sub;
         if(isWin){icon='🎉';title='Well done!';body='You found the word in '+(currentRow+1)+' guess'+(currentRow+1!==1?'es':'')+'!';}
-        else{icon='😔';title='Better luck next time';body=!hideWordOnLoss?'The word was <strong>'+targetWord+'</strong>.': "You didn\u2019t find the word this time.";}
+        else{icon='😔';title='Better luck next time';body=!hideWordOnLoss?'The word was <strong>'+escHtml(targetWord)+'</strong>.': "You didn\u2019t find the word this time.";}
         sub=left>0?'You have '+left+' attempt'+(left!==1?'s':'')+' remaining.':(isWin?"You\u2019ve used all your attempts.":"This link is now locked.");
         var dist=shareDist?buildEmojiGrid(isWin):null;
         setTimeout(function(){
@@ -713,7 +733,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function stopGlitch(){if(glitchInterval){clearInterval(glitchInterval);glitchInterval=null;}}
 
     function showTimeUpOverlay(){
-        var words=multiWord?targetWord+' & '+targetWord2:targetWord;
+        var words=multiWord?escHtml(targetWord)+' & '+escHtml(targetWord2):escHtml(targetWord);
         var o=buildOverlay({icon:'⏱',title:"Time's up!",body:hideWordOnLoss?'You ran out of time.':'The word'+(multiWord?'s were':'was')+' <strong>'+words+'</strong>.',sub:''});
         document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});
     }
@@ -1056,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function showLossOverlay(){clearProgress();
         reportResult(false,maxGuesses);stopGlitch();
         var dist=shareDist?buildEmojiGrid(false):null;
-        var body=hideWordOnLoss?'':(multiWord?'The words were <strong>'+targetWord+'</strong> &amp; <strong>'+targetWord2+'</strong>.':'The word was <strong>'+targetWord+'</strong>.');
+        var body=hideWordOnLoss?'':(multiWord?'The words were <strong>'+escHtml(targetWord)+'</strong> &amp; <strong>'+escHtml(targetWord2)+'</strong>.':'The word was <strong>'+escHtml(targetWord)+'</strong>.');
         setTimeout(function(){var o=buildOverlay({icon:'😔',title:'Better luck next time',body:body||"You didn\u2019t find the word.",sub:'',dist:dist,btnText:null});document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});},600);
     }
 
@@ -1125,6 +1145,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var timerV=parseInt(document.getElementById('custom-timer-input').value)||60;
             var word2=mw?document.getElementById('custom-word2-input').value.toUpperCase().trim():'';
             if(!word||!/^[A-Z]+$/.test(word)){showToast('Word must only contain letters A-Z.');return;}
+            if(word.length<2||word.length>15){showToast('Word must be 2-15 letters long.');return;}
             if(mw&&(!word2||!/^[A-Z]+$/.test(word2))){showToast('Second word must only contain letters A-Z.');return;}
             if(mw&&word2.length!==word.length){showToast('Both words must be the same length.');return;}
             if(timed&&timerV<10){showToast('Timer must be at least 10 seconds.');return;}
@@ -1176,7 +1197,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function showToast(message,duration){
         duration=duration||1500;
         var c=document.getElementById('toast-container'),t=document.createElement('div');
-        t.innerHTML=message;t.className='toast';c.appendChild(t);
+        t.textContent=message;t.className='toast';c.appendChild(t);
         setTimeout(function(){t.classList.add('show');},10);
         setTimeout(function(){t.classList.remove('show');t.addEventListener('transitionend',function(){t.remove();});},duration);
     }
