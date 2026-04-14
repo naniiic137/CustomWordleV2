@@ -34,11 +34,11 @@ A fully-featured Wordle clone with a powerful puzzle creator, multiple game mode
 
 ### Game Modes
 
-The puzzle creator includes 17 unique game modes:
+The puzzle creator includes 21 unique game modes:
 
 | Mode | Icon | Description |
 |------|------|-------------|
-| **Glitch** | ⚡ | Tiles randomly flicker with wrong letters |
+| **Glitch** | ⚡ | Tiles randomly flicker with wrong letters (aggressive) |
 | **Hide on loss** | 🙈 | The answer stays secret if you lose |
 | **No feedback** | 🔇 | No colors revealed - pure guessing |
 | **No backspace** | 🚫 | Cannot delete letters once typed |
@@ -55,7 +55,10 @@ The puzzle creator includes 17 unique game modes:
 | **Schrödinger** | 🐱 | One slot contains two letters at once |
 | **False Hope** | 🌝 | First row fakes 2 yellow tiles |
 | **Mimic** | 🎭 | Your first guess becomes the word |
-| **Dict Restrict** | 📖 | Next guess must start with the same letter |
+| **Dict Restrict** | 📖 | Next guess must start with same letter |
+| **Number Mode** | 🔢 | Guess numbers instead of words |
+| **No Reuse** | 🔒 | Can't guess letters marked as absent |
+| **Blind Mode** | 👁️‍🗨️ | Keyboard doesn't show feedback |
 
 ### Advanced Features
 - **Progress restore** - Resume games after page refresh
@@ -63,6 +66,7 @@ The puzzle creator includes 17 unique game modes:
 - **Timer with danger state** - Visual countdown with warning at 5 seconds
 - **Mode display** - Show active modes to players (optional)
 - **Hint unlocking** - Hints unlock after N guesses (optional)
+- **Custom hint text** - Creator can add a text hint for players
 
 ## Puzzle Creator
 

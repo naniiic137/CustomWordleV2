@@ -750,24 +750,39 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function startGlitch(){
         if(!glitchMode)return;
-        var alpha='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        var alpha='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         glitchInterval=setInterval(function(){
             if(isGameOver){stopGlitch();return;}
-            /* Pick 1-2 random tiles from the CURRENT unfilled row */
-            var picks=Math.random()<0.5?1:2;
+            /* Pick 2-4 random tiles from the CURRENT unfilled row */
+            var picks=2+Math.floor(Math.random()*3);
             for(var p=0;p<picks;p++){
                 var col=Math.floor(Math.random()*wordLength);
                 var tile=document.getElementById('tile-'+currentRow+'-'+col);
                 if(!tile||!tile.textContent)continue;
                 var real=tile.textContent;
-                var fake=alpha[Math.floor(Math.random()*26)];
+                var fake=alpha[Math.floor(Math.random()*alpha.length)];
                 tile.textContent=fake;
                 tile.classList.add('glitch-flash');
-                /* Restore after 80-150ms */
-                var delay=80+Math.floor(Math.random()*70);
+                /* Restore after 40-100ms */
+                var delay=40+Math.floor(Math.random()*60);
                 (function(t,r){setTimeout(function(){t.textContent=r;t.classList.remove('glitch-flash');},delay);})(tile,real);
             }
-        },600+Math.floor(Math.random()*800));
+            /* Also glitch tile2 for multi-word */
+            if(multiWord){
+                var picks2=2+Math.floor(Math.random()*3);
+                for(var p=0;p<picks2;p++){
+                    var col2=Math.floor(Math.random()*wordLength);
+                    var tile2=document.getElementById('tile2-'+currentRow+'-'+col2);
+                    if(!tile2||!tile2.textContent)continue;
+                    var real2=tile2.textContent;
+                    var fake2=alpha[Math.floor(Math.random()*alpha.length)];
+                    tile2.textContent=fake2;
+                    tile2.classList.add('glitch-flash');
+                    var delay2=40+Math.floor(Math.random()*60);
+                    (function(t,r){setTimeout(function(){t.textContent=r;t.classList.remove('glitch-flash');},delay2);})(tile2,real2);
+                }
+            }
+        },200+Math.floor(Math.random()*300));
     }
 
     function stopGlitch(){if(glitchInterval){clearInterval(glitchInterval);glitchInterval=null;}}
@@ -947,13 +962,15 @@ function createKeyboard(){
 
         /* ── No Reuse: can't use letters marked as absent ── */
         if(noReuseMode){
+            var absentLetters=[];
+            for(var r=0;r<guessGrid.length;r++){
+                for(var c=0;c<guessGrid[r].length;c++){
+                    if(guessGrid[r][c].s==='absent')absentLetters.push(guessGrid[r][c].l);
+                }
+            }
             var invalidLetters=[];
             for(var i=0;i<guess.length;i++){
-                var letter=guess[i];
-                var k=document.getElementById('key-'+letter);
-                if(k&&k.classList.contains('absent')&&!k.classList.contains('correct')&&!k.classList.contains('present')){
-                    invalidLetters.push(letter);
-                }
+                if(absentLetters.indexOf(guess[i])!==-1)invalidLetters.push(guess[i]);
             }
             if(invalidLetters.length>0){
                 shakeRow('Letter "'+invalidLetters[0]+'" already absent');return;
@@ -1035,7 +1052,6 @@ function createKeyboard(){
             targetWord=guess.toUpperCase();
             mimicReady=true;
             result=result.map(function(e){return{l:e.l,s:'absent'};});
-            showToast('🎭 Your word is now the target! Guess it again.',3000);
         }
 
         /* ── Schrödinger: unstable slot counts green for alt letter until attempt 5 ── */
@@ -1052,7 +1068,7 @@ function createKeyboard(){
             var arr=targetWord.split('');
             var tmp=arr[p1];arr[p1]=arr[p2];arr[p2]=tmp;
             targetWord=arr.join('');
-            showToast('😵 Something shifted…',1800);
+            //showToast('😵 Something shifted…',1800);
         }
 
         /* ── False Hope: first row forces ≥2 yellows ── */
