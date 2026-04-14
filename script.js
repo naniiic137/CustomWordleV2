@@ -83,6 +83,13 @@ document.addEventListener('DOMContentLoaded', function () {
         header.push(0x01,flags2,cfg.hintUnlock||0,flags3);
         /* Append maxPlayers as 2 bytes only when non-zero (flag bit 8 signals presence) */
         if(mp>0)header.push((mp>>8)&0xff,mp&0xff);
+        /* Append custom hint text if present (0x02 marker signals presence) */
+        if(cfg.hintText){
+            var ht=cfg.hintText;
+            header.push(0x02);
+            header.push(ht.length&0xff);
+            for(var h=0;h<ht.length;h++)header.push(ht.charCodeAt(h));
+        }
         return new Uint8Array(header);
     }
 
@@ -104,6 +111,17 @@ document.addEventListener('DOMContentLoaded', function () {
             f3=u[i++]||0;
             /* flags3 bit 8 signals two maxPlayers bytes follow (backward-compatible) */
             if((f3&8)&&i+1<u.length)maxPlayers=(u[i++]<<8)|u[i++];
+            /* Check for custom hint text (0x02 marker) */
+            var hintText='';
+            if(i<u.length&&u[i]===0x02){
+                i++;
+                if(i<u.length){
+                    var htLen=u[i++];
+                    var htArr=[];
+                    for(var ht=0;ht<htLen&&i<u.length;ht++)htArr.push(String.fromCharCode(u[i++]));
+                    hintText=htArr.join('');
+                }
+            }
         }
         if(i<u.length&&u[i]===0){
             i++;
@@ -113,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function () {
                fibble:!!(f2&1),absurdle:!!(f2&2),mirror:!!(f2&4),fakenews:!!(f2&8),gaslight:!!(f2&16),schrodinger:!!(f2&32),falsehope:!!(f2&64),mimic:!!(f2&128),
                showModes:!!(f3&1),dictRestrict:!!(f3&2),glitch:!!(f3&4),
                numberMode:!!(f3&16),noReuse:!!(f3&32),blind:!!(f3&64),
-               hints:hints,guesses:guesses,plays:plays,used:used,timer:timer,hintUnlock:hintUnlock,maxPlayers:maxPlayers,savedGuesses:savedGuesses,savedGuesses2:savedGuesses2};
+               hints:hints,guesses:guesses,plays:plays,used:used,timer:timer,hintUnlock:hintUnlock,maxPlayers:maxPlayers,savedGuesses:savedGuesses,savedGuesses2:savedGuesses2,hintText:hintText};
     }
 
     /* Generate 16-byte key → 22-char base64url secret */
@@ -242,7 +260,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var keyboardContainer=document.getElementById('keyboard-container');
 
     var targetWord='',wordLength=5,currentRow=0,currentCol=0;
-    var isGameOver=false,hideWordOnLoss=false,hintsRemaining=0;
+    var isGameOver=false,hideWordOnLoss=false,hintsRemaining=0,hintText='';
     var maxGuesses=6,maxPlays=0,playsUsed=0,maxPlayersLimit=0;
     var noColorFeedback=false,noBackspace=false,oneStrike=false;
     var revealFirst=false,shareDist=false,multiWord=false;
@@ -299,7 +317,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             targetWord=word;wordLength=word.length;hideWordOnLoss=cfg.hide;
-            hintsRemaining=cfg.hints;maxGuesses=cfg.guesses||6;
+            hintsRemaining=cfg.hints;hintText=cfg.hintText||'';
             maxPlays=cfg.plays;playsUsed=cfg.used;maxPlayersLimit=cfg.maxPlayers||0;
             noColorFeedback=cfg.nocol;noBackspace=cfg.nobk;oneStrike=cfg.one;
             revealFirst=cfg.rf;shareDist=cfg.sd;timerSeconds=cfg.timer;timedMode=timerSeconds>=10;
@@ -533,6 +551,16 @@ document.addEventListener('DOMContentLoaded', function () {
     function initializeGame(savedProgress){
         applyDynamicSizing();createBoard();createKeyboard();
         updateHintButton();updatePlaysCounter();showActiveModes();
+        
+        /* Show custom hint text if provided */
+        if(hintText){
+            var hintTextEl=document.createElement('div');
+            hintTextEl.id='custom-hint-text';
+            hintTextEl.className='custom-hint-text';
+            hintTextEl.textContent='💡 ' + hintText;
+            gameContainer.insertBefore(hintTextEl,gameContainer.firstChild);
+        }
+        
         document.getElementById('hint-button').addEventListener('click',useHint);
         document.addEventListener('keydown',handleKeyPress);
         window.addEventListener('beforeunload',function(){saveProgress();});
@@ -1226,8 +1254,9 @@ dictRestrict:document.getElementById('dictrestrict-toggle')&&document.getElement
                           noReuse:document.getElementById('noreuse-toggle')&&document.getElementById('noreuse-toggle').checked,
                           blind:document.getElementById('blind-toggle')&&document.getElementById('blind-toggle').checked,
                           numberMode:numberMode,
-                         showModes:document.getElementById('showmodes-toggle')&&document.getElementById('showmodes-toggle').checked,
-                         hintUnlock:(function(){var v=parseInt((document.getElementById('hiddenhint-after-input')||{}).value,10);return(v>0&&parseInt(document.getElementById('custom-hints-input').value,10)>0)?v:0;})()};
+showModes:document.getElementById('showmodes-toggle')&&document.getElementById('showmodes-toggle').checked,
+                          hintUnlock:(function(){var v=parseInt((document.getElementById('hiddenhint-after-input')||{}).value,10);return(v>0&&parseInt(document.getElementById('custom-hints-input').value,10)>0)?v:0;})(),
+                          hintText:(document.getElementById('custom-hint-text-input')||{}).value||''};
                 var d=await seal(pack(cfg),keyBuf);
                 /* Always link back to the root (index.html), never to creator.html */
                 var link=window.location.origin+'/?d='+d+'#'+secret;

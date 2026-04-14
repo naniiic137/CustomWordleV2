@@ -74,6 +74,12 @@ main {
     background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted);
     letter-spacing:0.02em; white-space:nowrap;
 }
+.custom-hint-text {
+    font-size:0.85rem; padding:0.6rem 1rem; border-radius:var(--radius);
+    background:rgba(129,140,248,0.12); border:1px solid rgba(129,140,248,0.25);
+    color:var(--text); margin-bottom:0.75rem; text-align:center;
+    width:100%; max-width:500px;
+}
 
 /* ─── Timer Bar ─── */
 #timer-bar-wrap {
