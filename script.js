@@ -1127,6 +1127,9 @@ function createKeyboard(){
             check.addEventListener('change',function(){label.classList.toggle('checked',check.checked);});
         });
         var nmC=document.getElementById('numbermode-toggle');
+        var mwC=document.getElementById('multiword-toggle'),tmC=document.getElementById('timed-toggle');
+        var mwE=document.getElementById('multiword-extra'),tmE=document.getElementById('timed-extra');
+        var hhC=document.getElementById('hiddenhint-toggle'),hhE=document.getElementById('hiddenhint-extra');
         if(mwC&&mwE)mwC.addEventListener('change',function(){mwE.classList.toggle('hidden',!mwC.checked);});
         if(tmC&&tmE)tmC.addEventListener('change',function(){tmE.classList.toggle('hidden',!tmC.checked);});
         if(hhC&&hhE)hhC.addEventListener('change',function(){hhE.classList.toggle('hidden',!hhC.checked);});
