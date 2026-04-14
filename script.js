@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var flags2=(cfg.fibble?1:0)|(cfg.absurdle?2:0)|(cfg.mirror?4:0)|(cfg.fakenews?8:0)|(cfg.gaslight?16:0)|(cfg.schrodinger?32:0)|(cfg.falsehope?64:0)|(cfg.mimic?128:0);
         var mp=cfg.maxPlayers||0;
         /* flags3 bit layout: 1=showModes, 2=dictRestrict, 4=glitch, 8=hasMaxPlayers */
-        var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0)|(mp>0?8:0);
+        var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0)|(mp>0?8:0)|(cfg.numberMode?16:0);
         var t=cfg.timer||0;
         var header=[];
         header.push(w.length);
@@ -112,6 +112,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return{word:w,word2:w2,hide:!!(f&1),nocol:!!(f&2),nobk:!!(f&4),one:!!(f&8),rf:!!(f&16),sd:!!(f&32),timed:!!(f&128),
                fibble:!!(f2&1),absurdle:!!(f2&2),mirror:!!(f2&4),fakenews:!!(f2&8),gaslight:!!(f2&16),schrodinger:!!(f2&32),falsehope:!!(f2&64),mimic:!!(f2&128),
                showModes:!!(f3&1),dictRestrict:!!(f3&2),glitch:!!(f3&4),
+               numberMode:!!(f3&16),
                hints:hints,guesses:guesses,plays:plays,used:used,timer:timer,hintUnlock:hintUnlock,maxPlayers:maxPlayers,savedGuesses:savedGuesses,savedGuesses2:savedGuesses2};
     }
 
@@ -254,7 +255,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── New mode flags ── */
     var fibbleMode=false,absurdleMode=false,mirrorMode=false,fakeNewsMode=false;
     var gaslightMode=false,schrodingerMode=false,falseHopeMode=false,mimicMode=false;
-    var dictRestrictMode=false,glitchMode=false;
+    var dictRestrictMode=false,glitchMode=false,numberMode=false;
     var hintUnlockAfter=0,showModesFlag=false;
     var glitchInterval=null;
     /* Absurdle: surviving word candidates */
@@ -290,7 +291,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             var word=cfg.word.toUpperCase();
-            if(!word||!/^[A-Z]+$/.test(word)){showCreatorWithMessage('Invalid link.');return;}
+            var nm=cfg.numberMode;
+            if(nm){
+                if(!word||!/^[0-9]+$/.test(word)){showCreatorWithMessage('Invalid link.');return;}
+            }else{
+                if(!word||!/^[A-Z]+$/.test(word)){showCreatorWithMessage('Invalid link.');return;}
+            }
 
             targetWord=word;wordLength=word.length;hideWordOnLoss=cfg.hide;
             hintsRemaining=cfg.hints;maxGuesses=cfg.guesses||6;
@@ -301,7 +307,7 @@ document.addEventListener('DOMContentLoaded', function () {
             /* New mode flags */
             fibbleMode=cfg.fibble;absurdleMode=cfg.absurdle;mirrorMode=cfg.mirror;fakeNewsMode=cfg.fakenews;
             gaslightMode=cfg.gaslight;schrodingerMode=cfg.schrodinger;falseHopeMode=cfg.falsehope;mimicMode=cfg.mimic;
-            dictRestrictMode=cfg.dictRestrict;glitchMode=cfg.glitch;
+            dictRestrictMode=cfg.dictRestrict;glitchMode=cfg.glitch;numberMode=cfg.numberMode;
             hintUnlockAfter=cfg.hintUnlock||0;showModesFlag=cfg.showModes;
 
             /* Absurdle: init candidates to full word list, ensure creator's word is included */
@@ -484,8 +490,9 @@ document.addEventListener('DOMContentLoaded', function () {
         clearProgress();
         reportResult(isWin, isWin ? currentRow+1 : maxGuesses);
         var left=maxPlays-playsUsed,icon,title,body,sub;
-        if(isWin){icon='🎉';title='Well done!';body='You found the word in '+(currentRow+1)+' guess'+(currentRow+1!==1?'es':'')+'!';}
-        else{icon='😔';title='Better luck next time';body=!hideWordOnLoss?'The word was <strong>'+escHtml(targetWord)+'</strong>.': "You didn\u2019t find the word this time.";}
+        var what=numberMode?'number':'word';
+        if(isWin){icon='🎉';title='Well done!';body='You found the '+what+' in '+(currentRow+1)+' guess'+(currentRow+1!==1?'es':'')+'!';}
+        else{icon='😔';title='Better luck next time';body=!hideWordOnLoss?'The '+what+' was <strong>'+escHtml(targetWord)+'</strong>.': "You didn\u2019t find the "+what+" this time.";}
         sub=left>0?'You have '+left+' attempt'+(left!==1?'s':'')+' remaining.':(isWin?"You\u2019ve used all your attempts.":"This link is now locked.");
         var dist=shareDist?buildEmojiGrid(isWin):null;
         setTimeout(function(){
@@ -591,7 +598,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if(partial&&partial.row===currentRow&&partial.cells&&Array.isArray(partial.cells)){
             for(var c=0;c<wordLength&&c<partial.cells.length;c++){
                 var letter=(partial.cells[c]||'').toUpperCase();
-                if(letter&&letter.length===1&&letter>='A'&&letter<='Z'){
+                var valid=numberMode?(letter>='0'&&letter<='9'):(letter>='A'&&letter<='Z');
+                if(letter&&letter.length===1&&valid){
                     var tile=document.getElementById('tile-'+currentRow+'-'+c);
                     if(tile){tile.textContent=letter;tile.classList.add('filled');}
                     currentCol=c+1;
@@ -600,7 +608,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if(multiWord&&partial.cells2&&Array.isArray(partial.cells2)){
                 for(var c=0;c<wordLength&&c<partial.cells2.length;c++){
                     var letter=(partial.cells2[c]||'').toUpperCase();
-                    if(letter&&letter.length===1&&letter>='A'&&letter<='Z'){
+                    var valid=numberMode?(letter>='0'&&letter<='9'):(letter>='A'&&letter<='Z');
+                    if(letter&&letter.length===1&&valid){
                         var tile2=document.getElementById('tile2-'+currentRow+'-'+c);
                         if(tile2){tile2.textContent=letter;tile2.classList.add('filled');}
                         currentCol2=c+1;
@@ -684,6 +693,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if(mimicMode)modes.push('🎭 Mimic');
         if(dictRestrictMode)modes.push('📖 Dict Restrict');
         if(glitchMode)modes.push('👾 Glitch');
+        if(numberMode)modes.push('🔢 Number Mode');
         if(hintUnlockAfter>0)modes.push('🔒 Hint after '+hintUnlockAfter);
         if(!modes.length)return;
         var bar=document.createElement('div');bar.className='mode-bar';
@@ -734,7 +744,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function showTimeUpOverlay(){
         var words=multiWord?escHtml(targetWord)+' & '+escHtml(targetWord2):escHtml(targetWord);
-        var o=buildOverlay({icon:'⏱',title:"Time's up!",body:hideWordOnLoss?'You ran out of time.':'The word'+(multiWord?'s were':'was')+' <strong>'+words+'</strong>.',sub:''});
+        var what=numberMode?'number':'word';
+        var o=buildOverlay({icon:'⏱',title:"Time's up!",body:hideWordOnLoss?'You ran out of time.':'The '+what+(multiWord?'s were':' was')+' <strong>'+words+'</strong>.',sub:''});
         document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});
     }
 
@@ -764,14 +775,20 @@ document.addEventListener('DOMContentLoaded', function () {
         gameBoard.appendChild(makeHalf('Word 1','tile'));gameBoard.appendChild(makeHalf('Word 2','tile2'));
     }
 
-    function createKeyboard(){
+function createKeyboard(){
         keyboardContainer.innerHTML='';
-        ['QWERTYUIOP','ASDFGHJKL','ENTER ZXCVBNM \u232b'].forEach(function(rowStr){
+        var rows;
+        if(numberMode){
+            rows=['123','456','789','0'];
+        } else {
+            rows=['QWERTYUIOP','ASDFGHJKL','ENTER ZXCVBNM \u232b'];
+        }
+        rows.forEach(function(rowStr){
             var rowEl=document.createElement('div');rowEl.className='keyboard-row';
             var keys=rowStr==='ENTER ZXCVBNM \u232b'?['ENTER','Z','X','C','V','B','N','M','\u232b']:rowStr.split('');
             keys.forEach(function(key){
                 var k=document.createElement('button');k.className='key';k.textContent=key;k.id='key-'+key;
-                if(key==='ENTER'||key==='\u232b')k.classList.add('large');
+                if(key==='ENTER'||key==='\u232b')k.className+=' large';
                 k.addEventListener('click',function(){handleKeyPress({key:key});});
                 rowEl.appendChild(k);
             });
@@ -815,10 +832,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function useHint(){
         if(hintsRemaining<=0||isGameOver)return;
 
-        /* Build candidate list: letters in the target word(s) the player has
-           NO knowledge of yet — key must have no status, or status 'absent'
-           (absent can appear if a duplicate letter was scored absent elsewhere).
-           Exclude anything already 'correct' or 'present' on the keyboard. */
+        /* Build candidate list: digits in the target word(s) for number mode, or letters for letter mode */
         var candidates=[];
         function addCandidates(word){
             for(var i=0;i<word.length;i++){
@@ -832,18 +846,17 @@ document.addEventListener('DOMContentLoaded', function () {
         addCandidates(targetWord);
         if(multiWord&&targetWord2)addCandidates(targetWord2);
 
-        if(!candidates.length){showToast('No new letters to reveal!');return;}
+        if(!candidates.length){showToast(numberMode?'No new digits to reveal!':'No new letters to reveal!');return;}
 
         var pick=candidates[Math.floor(Math.random()*candidates.length)];
         var hk=document.getElementById('key-'+pick);
         if(hk){
             hk.classList.remove('present','absent','correct');
-            /* Mark yellow (present) — letter is in the word but position not given */
             hk.classList.add('present','hint-flash');
             hk.dataset.status='present';
             hk.addEventListener('animationend',function(){hk.classList.remove('hint-flash');},{once:true});
         }
-        showToast('\u2728 "'+pick+'" is in the word!',2200);
+        showToast(numberMode?'\u2728 "'+pick+'" is in the number!':'\u2728 "'+pick+'" is in the word!',2200);
         hintsRemaining--;updateHintButton();
     }
 
@@ -852,7 +865,8 @@ document.addEventListener('DOMContentLoaded', function () {
         var key=e.key.toUpperCase();
         if(key==='ENTER')submitGuess();
         else if((key==='BACKSPACE'||key==='\u232b')&&!noBackspace)deleteLetter();
-        else if(key.length===1&&key>='A'&&key<='Z')addLetter(key);
+        else if(key.length===1&&key>='0'&&key<='9'&&numberMode)addLetter(key);
+        else if(key.length===1&&key>='A'&&key<='Z'&&!numberMode)addLetter(key);
     }
 
     function addLetter(letter){
@@ -1068,16 +1082,18 @@ document.addEventListener('DOMContentLoaded', function () {
     function showWinOverlay(){clearProgress();
         reportResult(true,currentRow+1);stopGlitch();
         var n=currentRow+1,dist=shareDist?buildEmojiGrid(true):null;
-        var msgs=['Genius! 🧠','Magnificent! ✨','Splendid! 🎉','Great! 👏','Good job! 😊','Phew! 😅'];
+        var msgs=numberMode?['Genius! 🧠','Magnificent! ✨','Splendid! 🎉','Great! 👏','Good job! 😊','Phew! 😅']:['Genius! 🧠','Magnificent! ✨','Splendid! 🎉','Great! 👏','Good job! 😊','Phew! 😅'];
         var praise=n<=msgs.length?msgs[n-1]:'Got it! 🎊';
-        setTimeout(function(){var o=buildOverlay({icon:'🎉',title:'You got it!',body:praise+' Found in <strong>'+n+'</strong> guess'+(n!==1?'es':'')+'.',sub:'',dist:dist,winCard:true,btnText:null});document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});},900);
+        var what=numberMode?'number':'word';
+        setTimeout(function(){var o=buildOverlay({icon:'🎉',title:'You got it!',body:praise+' Found the '+what+' in <strong>'+n+'</strong> guess'+(n!==1?'es':'')+'.',sub:'',dist:dist,winCard:true,btnText:null});document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});},900);
     }
 
     function showLossOverlay(){clearProgress();
         reportResult(false,maxGuesses);stopGlitch();
         var dist=shareDist?buildEmojiGrid(false):null;
-        var body=hideWordOnLoss?'':(multiWord?'The words were <strong>'+escHtml(targetWord)+'</strong> &amp; <strong>'+escHtml(targetWord2)+'</strong>.':'The word was <strong>'+escHtml(targetWord)+'</strong>.');
-        setTimeout(function(){var o=buildOverlay({icon:'😔',title:'Better luck next time',body:body||"You didn\u2019t find the word.",sub:'',dist:dist,btnText:null});document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});},600);
+        var what=numberMode?'number':'word';
+        var body=hideWordOnLoss?'':(multiWord?'The words were <strong>'+escHtml(targetWord)+'</strong> &amp; <strong>'+escHtml(targetWord2)+'</strong>.':'The '+what+' was <strong>'+escHtml(targetWord)+'</strong>.');
+        setTimeout(function(){var o=buildOverlay({icon:'😔',title:'Better luck next time',body:body||"You didn\u2019t find the "+what+".",sub:'',dist:dist,btnText:null});document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});},600);
     }
 
     function shakeRow(message){
@@ -1102,7 +1118,7 @@ document.addEventListener('DOMContentLoaded', function () {
             {check:'gaslight-toggle',label:'gaslight-toggle-label'},{check:'schrodinger-toggle',label:'schrodinger-toggle-label'},
             {check:'falsehope-toggle',label:'falsehope-toggle-label'},{check:'mimic-toggle',label:'mimic-toggle-label'},
             {check:'dictrestrict-toggle',label:'dictrestrict-toggle-label'},{check:'glitch-toggle',label:'glitch-toggle-label'},
-            {check:'showmodes-toggle',label:'showmodes-toggle-label'},
+            {check:'numbermode-toggle',label:'numbermode-toggle-label'},{check:'showmodes-toggle',label:'showmodes-toggle-label'},
             {check:'hiddenhint-toggle',label:'hiddenhint-toggle-label'}
         ];
         allCards.forEach(function(c){
@@ -1110,12 +1126,22 @@ document.addEventListener('DOMContentLoaded', function () {
             if(!label||!check)return;
             check.addEventListener('change',function(){label.classList.toggle('checked',check.checked);});
         });
-        var mwC=document.getElementById('multiword-toggle'),tmC=document.getElementById('timed-toggle');
-        var mwE=document.getElementById('multiword-extra'),tmE=document.getElementById('timed-extra');
-        var hhC=document.getElementById('hiddenhint-toggle'),hhE=document.getElementById('hiddenhint-extra');
+        var nmC=document.getElementById('numbermode-toggle');
         if(mwC&&mwE)mwC.addEventListener('change',function(){mwE.classList.toggle('hidden',!mwC.checked);});
         if(tmC&&tmE)tmC.addEventListener('change',function(){tmE.classList.toggle('hidden',!tmC.checked);});
         if(hhC&&hhE)hhC.addEventListener('change',function(){hhE.classList.toggle('hidden',!hhC.checked);});
+        if(nmC){
+            nmC.addEventListener('change',function(){
+                var nm=nmC.checked;
+                var rf=document.getElementById('revealfirst-toggle');
+                var mw=document.getElementById('multiword-toggle');
+                var dr=document.getElementById('dictrestrict-toggle');
+                if(rf)rf.disabled=nm;
+                if(mw)mw.disabled=nm;
+                if(dr)dr.disabled=nm;
+                if(nm){if(rf)rf.checked=false;if(mw)mw.checked=false;if(dr)dr.checked=false;}
+            });
+        }
 
         /* Show hint-unlock sub-input whenever hints > 0 */
         var hintsInput=document.getElementById('custom-hints-input');
@@ -1142,10 +1168,16 @@ document.addEventListener('DOMContentLoaded', function () {
             var shareDst=document.getElementById('sharedist-toggle').checked;
             var mw=document.getElementById('multiword-toggle').checked;
             var timed=document.getElementById('timed-toggle').checked;
+            var numberMode=document.getElementById('numbermode-toggle')&&document.getElementById('numbermode-toggle').checked;
             var timerV=parseInt(document.getElementById('custom-timer-input').value)||60;
             var word2=mw?document.getElementById('custom-word2-input').value.toUpperCase().trim():'';
-            if(!word||!/^[A-Z]+$/.test(word)){showToast('Word must only contain letters A-Z.');return;}
-            if(word.length<2||word.length>15){showToast('Word must be 2-15 letters long.');return;}
+            if(numberMode){
+                if(!word||!/^[0-9]+$/.test(word)){showToast('Number mode: Word must only contain digits 0-9.');return;}
+                if(word.length<1||word.length>15){showToast('Number must be 1-15 digits long.');return;}
+            }else{
+                if(!word||!/^[A-Z]+$/.test(word)){showToast('Word must only contain letters A-Z.');return;}
+                if(word.length<2||word.length>15){showToast('Word must be 2-15 letters long.');return;}
+            }
             if(mw&&(!word2||!/^[A-Z]+$/.test(word2))){showToast('Second word must only contain letters A-Z.');return;}
             if(mw&&word2.length!==word.length){showToast('Both words must be the same length.');return;}
             if(timed&&timerV<10){showToast('Timer must be at least 10 seconds.');return;}
@@ -1155,9 +1187,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 var secret=genSecret();
                 var tokenBuf=new Uint8Array(B64.dec(secret));
                 var keyBuf=await deriveKey(tokenBuf);
-                var cfg={word:word,word2:word2,hints:hints,guesses:guesses,plays:plays,used:0,
+var cfg={word:word,word2:word2,hints:hints,guesses:guesses,plays:plays,used:0,
                          hide:hideW,nocol:noCol,nobk:noBk,one:oneStr,rf:rfirst,sd:shareDst,timed:timed,timer:timed?timerV:0,
-                          maxPlayers:parseInt((document.getElementById('custom-maxplayers-input')||{}).value,10)||0,
+                           maxPlayers:parseInt((document.getElementById('custom-maxplayers-input')||{}).value,10)||0,
                          fibble:document.getElementById('fibble-toggle')&&document.getElementById('fibble-toggle').checked,
                          absurdle:document.getElementById('absurdle-toggle')&&document.getElementById('absurdle-toggle').checked,
                          mirror:document.getElementById('mirror-toggle')&&document.getElementById('mirror-toggle').checked,
@@ -1168,6 +1200,7 @@ document.addEventListener('DOMContentLoaded', function () {
                          mimic:document.getElementById('mimic-toggle')&&document.getElementById('mimic-toggle').checked,
                          dictRestrict:document.getElementById('dictrestrict-toggle')&&document.getElementById('dictrestrict-toggle').checked,
                          glitch:document.getElementById('glitch-toggle')&&document.getElementById('glitch-toggle').checked,
+                         numberMode:numberMode,
                          showModes:document.getElementById('showmodes-toggle')&&document.getElementById('showmodes-toggle').checked,
                          hintUnlock:(function(){var v=parseInt((document.getElementById('hiddenhint-after-input')||{}).value,10);return(v>0&&parseInt(document.getElementById('custom-hints-input').value,10)>0)?v:0;})()};
                 var d=await seal(pack(cfg),keyBuf);
