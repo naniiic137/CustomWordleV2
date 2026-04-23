@@ -34,7 +34,7 @@ A fully-featured Wordle clone with a powerful puzzle creator, multiple game mode
 
 ### Game Modes
 
-The puzzle creator includes 21 unique game modes:
+The puzzle creator includes 29 game modes (core + chaos + hard modes):
 
 | Mode | Icon | Description |
 |------|------|-------------|
@@ -51,7 +51,7 @@ The puzzle creator includes 21 unique game modes:
 | **Absurdle** | 👾 | Word shifts to avoid your guesses |
 | **Mirror** | 🪞 | Green and Yellow feedback are reversed |
 | **Fake News** | 📰 | One random tile gives wrong feedback |
-| **Gaslighting** | 😵 | Word changes every 3rd guess |
+| **Gaslighting** | 😵 | Word changes every 2 guesses |
 | **Schrödinger** | 🐱 | One slot contains two letters at once |
 | **False Hope** | 🌝 | First row fakes 2 yellow tiles |
 | **Mimic** | 🎭 | Your first guess becomes the word |
@@ -59,14 +59,24 @@ The puzzle creator includes 21 unique game modes:
 | **Number Mode** | 🔢 | Guess numbers instead of words |
 | **No Reuse** | 🔒 | Can't guess letters marked as absent |
 | **Blind Mode** | 👁️‍🗨️ | Keyboard doesn't show feedback |
+| **Shuffle** | 🔀 | Secret letters reshuffle each guess |
+| **Decay** | ⏳ | A keyboard key decays every 2 guesses |
+| **Memory** | 🧠 | Revealed tiles hide after 2 seconds |
+| **Reverse** | 🔄 | Match a target feedback pattern |
+| **Minefield** | 💣 | Mine slots can cost extra guesses |
+| **Anagram** | 🔡 | Guess using only provided letters |
+| **Sniper** | 🎯 | One guess only |
+| **Spiral** | 🌀 | Clear 3→4→5→6 letter rounds |
 
 ### Advanced Features
 - **Progress restore** - Resume games after page refresh
 - **Dual board mode** - Solve two words at once
+- **Mixed dual board** - Board 1 letters + Board 2 numbers
 - **Timer with danger state** - Visual countdown with warning at 5 seconds
 - **Mode display** - Show active modes to players (optional)
 - **Hint unlocking** - Hints unlock after N guesses (optional)
 - **Custom hint text** - Creator can add a text hint for players
+- **Visible submit action in Number Mode** - Enter key + submit button support
 
 ## Puzzle Creator
 
@@ -92,6 +102,14 @@ Puzzle links contain encrypted configuration data:
 - Player limits
 
 The links use URL fragments for the decryption key, ensuring the actual word never hits the server.
+
+### Mode Compatibility
+
+Most modes are combinable. A few are intentionally constrained in the creator when they are logically exclusive:
+
+- **Spiral** is single-board, letter-only.
+- Some hard modes are restricted to single-board play.
+- **Mixed Mode** is available when both **Multi-word** and **Number Mode** are enabled.
 
 ## Security
 
@@ -201,33 +219,10 @@ This project is provided for educational and personal use.
 
 ## Important Notes
 
-### Work in Progress
-
-Some game modes are experimental or still being refined. The following modes may have quirks or incomplete behavior:
-
-- **Absurdle** - Currently uses a limited word list; may not work correctly with non-5-letter words
-- **Schrödinger** - The dual-letter slot mechanic is partially implemented
-- **Gaslighting** - Word shifting logic may need adjustment
-- **Fibble** - Row deception mechanics are experimental
-- **Mimic** - First guess word replacement needs testing
-- **False Hope** - Fake yellow generation is basic
-- **Dict Restrict** - Letter restriction logic may have edge cases
-
-### Core Features (Fully Functional)
-
-The most important features for a complete puzzle experience are working reliably:
-
-- **Attempt limits** - Links expire after a set number of attempts per player
-- **Hide on loss** - Answer remains secret when players lose (if enabled)
-- **Multi-word mode** - Solve two words simultaneously
-- **Timed mode** - Countdown timer with visual feedback
-- **Progress saving** - Games persist across page refreshes
-- **Lobby limits** - Control concurrent player slots
-- **Hint system** - Reveal letters with configurable unlock timing
-- **Shareable results** - Copy emoji grid to clipboard
-- **All basic modes** - Glitch, Mirror, No feedback, No backspace, One strike, Reveal first, Fake News
-
-The puzzle creator and link encryption system are fully operational and production-ready.
+- **Win detection is mode-safe:** Correct guesses end the game across standard, deceptive, and hard modes.
+- **No Reuse is enforced as a hard restriction:** guesses containing known absent letters are blocked.
+- **Absurdle/Gaslighting behavior is intentionally adversarial:** answer handling can shift mid-game by design.
+- **Creator grid layout is fixed to consistent 3-column card behavior (no stretched final Number Mode card).**
 
 ## Credits
 
