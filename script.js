@@ -72,8 +72,8 @@ document.addEventListener('DOMContentLoaded', function () {
         var flags=(cfg.hide?1:0)|(cfg.nocol?2:0)|(cfg.nobk?4:0)|(cfg.one?8:0)|(cfg.rf?16:0)|(cfg.sd?32:0)|(mw?64:0)|(cfg.timed?128:0);
         var flags2=(cfg.fibble?1:0)|(cfg.absurdle?2:0)|(cfg.mirror?4:0)|(cfg.fakenews?8:0)|(cfg.gaslight?16:0)|(cfg.schrodinger?32:0)|(cfg.falsehope?64:0)|(cfg.mimic?128:0);
         var mp=cfg.maxPlayers||0;
-        /* flags3 bit layout: 1=showModes, 2=dictRestrict, 4=glitch, 8=hasMaxPlayers */
-        var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0)|(mp>0?8:0)|(cfg.numberMode?16:0)|(cfg.noReuse?32:0)|(cfg.blind?64:0);
+        /* flags3 bit layout: 1=showModes, 2=dictRestrict, 4=glitch, 8=hasMaxPlayers, 16=numberMode, 32=noReuse, 64=blind, 128=mixedMode */
+        var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0)|(mp>0?8:0)|(cfg.numberMode?16:0)|(cfg.noReuse?32:0)|(cfg.blind?64:0)|(cfg.mixedMode?128:0);
         var t=cfg.timer||0;
         var header=[];
         header.push(w.length);
@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return{word:w,word2:w2,hide:!!(f&1),nocol:!!(f&2),nobk:!!(f&4),one:!!(f&8),rf:!!(f&16),sd:!!(f&32),timed:!!(f&128),
                fibble:!!(f2&1),absurdle:!!(f2&2),mirror:!!(f2&4),fakenews:!!(f2&8),gaslight:!!(f2&16),schrodinger:!!(f2&32),falsehope:!!(f2&64),mimic:!!(f2&128),
                showModes:!!(f3&1),dictRestrict:!!(f3&2),glitch:!!(f3&4),
-               numberMode:!!(f3&16),noReuse:!!(f3&32),blind:!!(f3&64),
+               numberMode:!!(f3&16),noReuse:!!(f3&32),blind:!!(f3&64),mixedMode:!!(f3&128),
                hints:hints,guesses:guesses,plays:plays,used:used,timer:timer,hintUnlock:hintUnlock,maxPlayers:maxPlayers,savedGuesses:savedGuesses,savedGuesses2:savedGuesses2,hintText:hintText};
     }
 
@@ -205,8 +205,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if(!WORDS5_ARR)WORDS5_ARR=WORDS5.split(' ').filter(function(w){return w.length===5;});
             return WORDS5_ARR;
         }
-        /* For non-5-letter words, generate plausible fakes by permuting the target */
-        return [targetWord];
+        /* For non-5-letter words, fall back to current target only */
+        return [targetWord.toLowerCase()];
     }
 
     /* Score guess against a potential target (pure, no side effects) */
@@ -238,6 +238,34 @@ document.addEventListener('DOMContentLoaded', function () {
             for(var k in groups){if(k!==allCorrect&&(!second||groups[k].length>second.length))second=groups[k];}
             if(second&&second.length>0)best=second;
         }
+        return {candidates:best||candidates,key:bestKey};
+    }
+
+    function getGaslightWord(lastGuess) {
+        var candidates;
+        if(numberMode&&!mixedMode){
+            candidates=[];
+            for(var n=0;n<250;n++){
+                var s='';
+                for(var d=0;d<wordLength;d++)s+=String(Math.floor(Math.random()*10));
+                candidates.push(s);
+            }
+        }else{
+            candidates = getAbsurdleList(wordLength);
+        }
+        var best = targetWord, minOverlap = 99;
+        var seen = {};
+        for(var j=0;j<lastGuess.length;j++)seen[lastGuess[j]]=true;
+        for(var i=0; i<candidates.length; i++) {
+            var word = candidates[i].toUpperCase();
+            if(word===targetWord||word.length!==wordLength)continue;
+            var overlap=0,used={};
+            for(var k=0;k<word.length;k++){
+                var ch=word[k];
+                if(seen[ch]&&!used[ch]){overlap++;used[ch]=true;}
+            }
+            if(overlap < minOverlap) { minOverlap = overlap; best = word; }
+        }
         return best;
     }
 
@@ -263,9 +291,10 @@ document.addEventListener('DOMContentLoaded', function () {
     var isGameOver=false,hideWordOnLoss=false,hintsRemaining=0,hintText='';
     var maxGuesses=6,maxPlays=0,playsUsed=0,maxPlayersLimit=0;
     var noColorFeedback=false,noBackspace=false,oneStrike=false;
-    var revealFirst=false,shareDist=false,multiWord=false;
+    var revealFirst=false,shareDist=false,multiWord=false,mixedMode=false;
     var timedMode=false,timerSeconds=0,timerInterval=null;
     var targetWord2='',currentCol2=0,word2Solved=false;
+    var activeMultiBoard=1;
     var guessGrid=[],guessGrid2=[];
     var masterKeyBuf=null;
     var currentPlayId=null,currentLinkId=null;
@@ -279,7 +308,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /* Absurdle: surviving word candidates */
     var absurdleCandidates=[];
     /* Schrödinger: which position is unstable, and the alternate letter */
-    var schrodingerPos=-1,schrodingerAlt='';
+    var schrodingerPos=-1,schrodingerAlt='',schrodingerTwinWord='';
     /* False Hope: first guess fake yellows, cleared after row 1 */
     var falseHopeFired=false,falseHopeFakes=[];
     /* Mimic: set once first guess submitted */
@@ -310,7 +339,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             var word=cfg.word.toUpperCase();
             var nm=cfg.numberMode;
-            if(nm){
+            if(nm&&!cfg.mixedMode){
                 if(!word||!/^[0-9]+$/.test(word)){showCreatorWithMessage('Invalid link.');return;}
             }else{
                 if(!word||!/^[A-Z]+$/.test(word)){showCreatorWithMessage('Invalid link.');return;}
@@ -327,21 +356,41 @@ document.addEventListener('DOMContentLoaded', function () {
             gaslightMode=cfg.gaslight;schrodingerMode=cfg.schrodinger;falseHopeMode=cfg.falsehope;mimicMode=cfg.mimic;
             dictRestrictMode=cfg.dictRestrict;glitchMode=cfg.glitch;numberMode=cfg.numberMode;noReuseMode=cfg.noReuse;blindMode=cfg.blind;
             hintUnlockAfter=cfg.hintUnlock||0;showModesFlag=cfg.showModes;
+            mixedMode=cfg.mixedMode;
 
             /* Absurdle: init candidates to full word list, ensure creator's word is included */
             if(absurdleMode){
                 absurdleCandidates=getAbsurdleList(wordLength).slice();
                 if(absurdleCandidates.indexOf(targetWord.toLowerCase())===-1)absurdleCandidates.push(targetWord.toLowerCase());
             }
-            /* Schrödinger: pick a random position and a random alternate letter */
+            /* Schrödinger: Setup partner word */
             if(schrodingerMode){
                 schrodingerPos=Math.floor(Math.random()*wordLength);
-                var alpha='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-                do{schrodingerAlt=alpha[Math.floor(Math.random()*26)];}while(schrodingerAlt===targetWord[schrodingerPos]);
+                var list = getAbsurdleList(wordLength);
+                var partner = list.find(w => {
+                    var W = w.toUpperCase();
+                    if(W.length !== wordLength || W === targetWord) return false;
+                    for(var k=0; k<wordLength; k++) if(k !== schrodingerPos && W[k] !== targetWord[k]) return false;
+                    return true;
+                });
+                if(partner) {
+                    schrodingerTwinWord = partner.toUpperCase();
+                } else {
+                    var alpha=numberMode?'0123456789':'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                    var arr=targetWord.split('');
+                    var alt;
+                    do{alt=alpha[Math.floor(Math.random()*alpha.length)];}while(alt===targetWord[schrodingerPos]);
+                    arr[schrodingerPos]=alt;
+                    schrodingerTwinWord=arr.join('');
+                }
+                schrodingerAlt=schrodingerTwinWord[schrodingerPos];
             }
 
             var w2=cfg.word2.toUpperCase();
-            if(w2&&w2.length===wordLength&&/^[A-Z]+$/.test(w2)){targetWord2=w2;multiWord=true;}
+            if(w2&&w2.length===wordLength){
+                var w2Ok=mixedMode?/^[0-9]+$/.test(w2):(numberMode?/^[0-9]+$/.test(w2):/^[A-Z]+$/.test(w2));
+                if(w2Ok){targetWord2=w2;multiWord=true;}
+            }
 
             /* ── Server-side attempt tracking ─────────────────────────────
                Only active when creator set a max-plays limit.
@@ -626,7 +675,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if(partial&&partial.row===currentRow&&partial.cells&&Array.isArray(partial.cells)){
             for(var c=0;c<wordLength&&c<partial.cells.length;c++){
                 var letter=(partial.cells[c]||'').toUpperCase();
-                var valid=numberMode?(letter>='0'&&letter<='9'):(letter>='A'&&letter<='Z');
+                var board1Number=numberMode&&!mixedMode;
+                var valid=board1Number?(letter>='0'&&letter<='9'):(letter>='A'&&letter<='Z');
                 if(letter&&letter.length===1&&valid){
                     var tile=document.getElementById('tile-'+currentRow+'-'+c);
                     if(tile){tile.textContent=letter;tile.classList.add('filled');}
@@ -636,7 +686,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if(multiWord&&partial.cells2&&Array.isArray(partial.cells2)){
                 for(var c=0;c<wordLength&&c<partial.cells2.length;c++){
                     var letter=(partial.cells2[c]||'').toUpperCase();
-                    var valid=numberMode?(letter>='0'&&letter<='9'):(letter>='A'&&letter<='Z');
+                    var board2Number=numberMode||mixedMode;
+                    var valid=board2Number?(letter>='0'&&letter<='9'):(letter>='A'&&letter<='Z');
                     if(letter&&letter.length===1&&valid){
                         var tile2=document.getElementById('tile2-'+currentRow+'-'+c);
                         if(tile2){tile2.textContent=letter;tile2.classList.add('filled');}
@@ -723,6 +774,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if(glitchMode)modes.push('👾 Glitch');
         if(numberMode)modes.push('🔢 Number Mode');
         if(noReuseMode)modes.push('🔒 No Reuse');
+        if(mixedMode)modes.push('🔄 Mixed Mode');
         if(blindMode)modes.push('👁️‍🗨️ Blind');
         if(hintUnlockAfter>0)modes.push('🔒 Hint after '+hintUnlockAfter);
         if(!modes.length)return;
@@ -811,26 +863,38 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     function createDualBoards(){
         gameBoard.innerHTML='';gameBoard.className='dual-board-wrap';
-        function makeHalf(lbl,pfx){
+        function makeHalf(lbl,pfx,boardNum){
             var half=document.createElement('div');half.className='board-half';
             var l=document.createElement('div');l.className='board-label';l.textContent=lbl;
             var grid=document.createElement('div');grid.className='board-grid';grid.style.cssText='display:grid;grid-template-rows:repeat('+maxGuesses+',1fr);gap:6px;';
+            half.dataset.board=String(boardNum);
+            half.addEventListener('click',function(){
+                activeMultiBoard=boardNum;
+                document.querySelectorAll('.board-half').forEach(function(el){el.classList.remove('active-board');});
+                half.classList.add('active-board');
+            });
             half.appendChild(l);half.appendChild(grid);createSingleBoard(grid,pfx);return half;
         }
-        gameBoard.appendChild(makeHalf('Word 1','tile'));gameBoard.appendChild(makeHalf('Word 2','tile2'));
+        var label1=(numberMode&&!mixedMode)?'Number 1':'Word 1';
+        var label2=(numberMode||mixedMode)?'Number 2':'Word 2';
+        gameBoard.appendChild(makeHalf(label1,'tile',1));gameBoard.appendChild(makeHalf(label2,'tile2',2));
+        var first=gameBoard.querySelector('.board-half');
+        if(first)first.classList.add('active-board');
     }
 
 function createKeyboard(){
         keyboardContainer.innerHTML='';
         var rows;
-        if(numberMode){
-            rows=['123','456','789','0'];
+        if(numberMode && !multiWord){
+            rows=[['1','2','3'],['4','5','6'],['7','8','9'],['ENTER','0','\u232b']];
+        } else if(multiWord&&(numberMode||mixedMode)){
+            rows=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','\u232b'],['1','2','3','4','5','6','7','8','9','0']];
         } else {
-            rows=['QWERTYUIOP','ASDFGHJKL','ENTER ZXCVBNM \u232b'];
+            rows=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','\u232b']];
         }
-        rows.forEach(function(rowStr){
+        rows.forEach(function(keys){
+            if(!keys||!keys.length) return;
             var rowEl=document.createElement('div');rowEl.className='keyboard-row';
-            var keys=rowStr==='ENTER ZXCVBNM \u232b'?['ENTER','Z','X','C','V','B','N','M','\u232b']:rowStr.split('');
             keys.forEach(function(key){
                 var k=document.createElement('button');k.className='key';k.textContent=key;k.id='key-'+key;
                 if(key==='ENTER'||key==='\u232b')k.className+=' large';
@@ -839,6 +903,7 @@ function createKeyboard(){
             });
             keyboardContainer.appendChild(rowEl);
         });
+        upsertSubmitButton();
     }
 
     function updatePlaysCounter(){
@@ -868,6 +933,55 @@ function createKeyboard(){
             btn.disabled=hintsRemaining<=0;
             btn.title='';
         }
+    }
+
+    function upsertSubmitButton(){
+        var existing=document.getElementById('submit-button');
+        if(!(numberMode||multiWord)){
+            if(existing)existing.remove();
+            return;
+        }
+        if(!existing){
+            existing=document.createElement('button');
+            existing.id='submit-button';
+            existing.className='action-button';
+            existing.textContent='Enter';
+            existing.addEventListener('click',function(){submitGuess();});
+            keyboardContainer.insertAdjacentElement('afterend',existing);
+        }
+    }
+
+    function getBoardType(boardNum){
+        if(boardNum===2)return (numberMode||mixedMode)?'number':'letter';
+        return (numberMode&&!mixedMode)?'number':'letter';
+    }
+
+    function getAbsentCharsFromGrid(grid){
+        var absent={};
+        for(var r=0;r<grid.length;r++){
+            for(var c=0;c<grid[r].length;c++){
+                var entry=grid[r][c];
+                if(entry&&entry.s==='absent')absent[entry.l]=true;
+            }
+        }
+        return absent;
+    }
+
+    function hasNoReuseViolation(guess,grid){
+        if(!noReuseMode)return false;
+        var absent=getAbsentCharsFromGrid(grid);
+        for(var i=0;i<guess.length;i++)if(absent[guess[i]])return guess[i];
+        return false;
+    }
+
+    function isPrimaryWinGuess(guess){
+        if(absurdleMode){
+            if(absurdleCandidates.length===1)return guess===absurdleCandidates[0].toUpperCase();
+            return false;
+        }
+        if(guess===targetWord)return true;
+        if(schrodingerMode&&schrodingerTwinWord&&guess===schrodingerTwinWord)return true;
+        return false;
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -910,26 +1024,41 @@ function createKeyboard(){
         var key=e.key.toUpperCase();
         if(key==='ENTER')submitGuess();
         else if((key==='BACKSPACE'||key==='\u232b')&&!noBackspace)deleteLetter();
-        else if(key.length===1&&key>='0'&&key<='9'&&numberMode)addLetter(key);
-        else if(key.length===1&&key>='A'&&key<='Z'&&!numberMode)addLetter(key);
+        else if(key.length===1&&key>='0'&&key<='9'&&(numberMode||mixedMode))addLetter(key);
+        else if(key.length===1&&key>='A'&&key<='Z'&&(!numberMode||mixedMode))addLetter(key);
     }
 
     function addLetter(letter){
         if(multiWord){
-            var minC=(revealFirst&&currentRow===0)?1:0,b1Done=isWord1Solved();
-            if(!b1Done&&currentCol<wordLength){if(currentCol<minC)currentCol=minC;var t1=document.getElementById('tile-'+currentRow+'-'+currentCol);if(t1){t1.textContent=letter;t1.classList.add('filled');currentCol++;}}
-            if(!word2Solved&&currentCol2<wordLength){if(currentCol2<minC)currentCol2=minC;var t2=document.getElementById('tile2-'+currentRow+'-'+currentCol2);if(t2){t2.textContent=letter;t2.classList.add('filled');currentCol2++;}}
+            var minC=(revealFirst&&currentRow===0)?1:0;
+            var isNum = letter >= '0' && letter <= '9';
+            if(activeMultiBoard===2){
+                if(word2Solved)return;
+                if(getBoardType(2)==='number'?!isNum:isNum)return;
+                if(noReuseMode&&getAbsentCharsFromGrid(guessGrid2)[letter]){shakeRow("You already know that letter isn't in the word!");return;}
+                if(currentCol2<wordLength){if(currentCol2<minC)currentCol2=minC; var t2=document.getElementById('tile2-'+currentRow+'-'+currentCol2); if(t2){t2.textContent=letter;t2.classList.add('filled');currentCol2++;}}
+            }else{
+                if(isWord1Solved())return;
+                if(getBoardType(1)==='number'?!isNum:isNum)return;
+                if(noReuseMode&&getAbsentCharsFromGrid(guessGrid)[letter]){shakeRow("You already know that letter isn't in the word!");return;}
+                if(currentCol<wordLength){if(currentCol<minC)currentCol=minC; var t1=document.getElementById('tile-'+currentRow+'-'+currentCol); if(t1){t1.textContent=letter;t1.classList.add('filled');currentCol++;}}
+            }
             scheduleSaveProgress();return;
         }
         if(revealFirst&&currentRow===0&&currentCol<1)currentCol=1;
+        if(getBoardType(1)==='number'?(letter<'0'||letter>'9'):(letter<'A'||letter>'Z'))return;
+        if(noReuseMode&&getAbsentCharsFromGrid(guessGrid)[letter]){shakeRow("You already know that letter isn't in the word!");return;}
         if(currentCol<wordLength){var t=document.getElementById('tile-'+currentRow+'-'+currentCol);t.textContent=letter;t.classList.add('filled');currentCol++;scheduleSaveProgress();}
     }
 
     function deleteLetter(){
         if(multiWord){
             var minC=(revealFirst&&currentRow===0)?1:0;
-            if(!isWord1Solved()&&currentCol>minC){currentCol--;var t1=document.getElementById('tile-'+currentRow+'-'+currentCol);if(t1){t1.textContent='';t1.classList.remove('filled');}}
-            if(!word2Solved&&currentCol2>minC){currentCol2--;var t2=document.getElementById('tile2-'+currentRow+'-'+currentCol2);if(t2){t2.textContent='';t2.classList.remove('filled');}}
+            if(activeMultiBoard===2){
+                if(!word2Solved&&currentCol2>minC){currentCol2--;var t2=document.getElementById('tile2-'+currentRow+'-'+currentCol2);if(t2){t2.textContent='';t2.classList.remove('filled');}}
+            }else{
+                if(!isWord1Solved()&&currentCol>minC){currentCol--;var t1=document.getElementById('tile-'+currentRow+'-'+currentCol);if(t1){t1.textContent='';t1.classList.remove('filled');}}
+            }
             scheduleSaveProgress();return;
         }
         var minC=(revealFirst&&currentRow===0)?1:0;
@@ -960,26 +1089,14 @@ function createKeyboard(){
             }
         }
 
-        /* ── No Reuse: can't use letters marked as absent ── */
-        if(noReuseMode){
-            var absentLetters=[];
-            for(var r=0;r<guessGrid.length;r++){
-                for(var c=0;c<guessGrid[r].length;c++){
-                    if(guessGrid[r][c].s==='absent')absentLetters.push(guessGrid[r][c].l);
-                }
-            }
-            var invalidLetters=[];
-            for(var i=0;i<guess.length;i++){
-                if(absentLetters.indexOf(guess[i])!==-1)invalidLetters.push(guess[i]);
-            }
-            if(invalidLetters.length>0){
-                shakeRow('Letter "'+invalidLetters[0]+'" already absent');return;
-            }
-        }
+        var noReuseHit=hasNoReuseViolation(guess,guessGrid);
+        if(noReuseHit){shakeRow("You already know that letter isn't in the word!");return;}
 
-        var result=scoreGuess(guess,targetWord);result=applyModeScore(result,guess,currentRow);guessGrid.push(result.slice());
+        var actualWin = isPrimaryWinGuess(guess);
+        var result=scoreGuess(guess,targetWord);
+        result=applyModeScore(result,guess,currentRow);guessGrid.push(result.slice());
         saveProgress();
-        revealTiles('tile',guess.split(''),result,function(w){checkSingleState(w);});
+        revealTiles('tile',guess.split(''),result,actualWin,function(w){checkSingleState(w);});
     }
 
     function submitMultiGuess(){
@@ -989,13 +1106,19 @@ function createKeyboard(){
         var win1=b1Done,win2=word2Solved,pending=0;
         if(!b1Done){
             var g1='';for(var i=0;i<wordLength;i++)g1+=document.getElementById('tile-'+currentRow+'-'+i).textContent;
+            var bad1=hasNoReuseViolation(g1,guessGrid);
+            if(bad1){shakeRow("You already know that letter isn't in the word!");return;}
+            var actualWin1 = isPrimaryWinGuess(g1);
             var r1=scoreGuess(g1,targetWord);r1=applyModeScore(r1,g1,currentRow);guessGrid.push(r1.slice());pending++;
-            revealTiles('tile',g1.split(''),r1,function(w){if(w)win1=true;pending--;if(!pending){saveProgress();afterMultiReveal(win1,win2,b1Done);}});
+            revealTiles('tile',g1.split(''),r1,actualWin1,function(w){if(w)win1=true;pending--;if(!pending){saveProgress();afterMultiReveal(win1,win2,b1Done);}});
         }
         if(!word2Solved){
             var g2='';for(var i=0;i<wordLength;i++)g2+=document.getElementById('tile2-'+currentRow+'-'+i).textContent;
-            var r2=scoreGuess(g2,targetWord2);r2=applyModeScore(r2,g2,currentRow);guessGrid2.push(r2.slice());pending++;
-            revealTiles('tile2',g2.split(''),r2,function(w){if(w){win2=true;word2Solved=true;showBoardBadge(2);}pending--;if(!pending){saveProgress();afterMultiReveal(win1,win2,b1Done);}});
+            var bad2=hasNoReuseViolation(g2,guessGrid2);
+            if(bad2){shakeRow("You already know that letter isn't in the word!");return;}
+            var actualWin2 = (g2 === targetWord2);
+            var r2=scoreGuess(g2,targetWord2);guessGrid2.push(r2.slice());pending++;
+            revealTiles('tile2',g2.split(''),r2,actualWin2,function(w){if(w){win2=true;word2Solved=true;showBoardBadge(2);}pending--;if(!pending){saveProgress();afterMultiReveal(win1,win2,b1Done);}});
         }
         if(pending===0){saveProgress();afterMultiReveal(win1,win2,b1Done);}
     }
@@ -1027,23 +1150,14 @@ function createKeyboard(){
 
     /* Apply all mode transformations to a scored result before revealing */
     function applyModeScore(result,guess,rowIdx){
-        /* ── Absurdle: adversarially pick new target each guess ── */
-        if(absurdleMode&&absurdleCandidates.length>1){
-            var history=[];
-            for(var r=0;r<guessGrid.length;r++){
-                var row=guessGrid[r];
-                var g='';for(var c=0;c<row.length;c++)g+=row[c].l;
-                var key=row.map(function(e){return e.s==='correct'?'C':e.s==='present'?'P':'A';}).join('');
-                history.push({guess:g,key:key});
-            }
-            var newCandidates=absurdleCandidates.filter(function(w){return isConsistent(w.toUpperCase(),history);});
-            if(newCandidates.length===0)newCandidates=absurdleCandidates;
-            var bestGroup=absurdlePickTarget(guess,newCandidates.map(function(w){return w.toUpperCase();}));
-            if(bestGroup&&bestGroup.length>0){
-                var newTarget=bestGroup[Math.floor(Math.random()*bestGroup.length)];
-                targetWord=newTarget.toUpperCase();
-                absurdleCandidates=newCandidates;
-                result=scoreGuess(guess,targetWord);
+        /* ── Absurdle: keep largest feedback bucket each guess ── */
+        if(absurdleMode&&absurdleCandidates.length>1&&guess!==targetWord){
+            var pick=absurdlePickTarget(guess,absurdleCandidates.map(function(w){return w.toUpperCase();}));
+            if(pick&&pick.candidates&&pick.candidates.length){
+                absurdleCandidates=pick.candidates.map(function(w){return w.toLowerCase();});
+                if(absurdleCandidates.length===1)targetWord=absurdleCandidates[0].toUpperCase();
+                result=scoreGuess(guess,(absurdleCandidates[Math.floor(Math.random()*absurdleCandidates.length)]||targetWord).toUpperCase());
+                showToast('👾 ' + absurdleCandidates.length + ' possibilities left');
             }
         }
 
@@ -1054,21 +1168,19 @@ function createKeyboard(){
             result=result.map(function(e){return{l:e.l,s:'absent'};});
         }
 
-        /* ── Schrödinger: unstable slot counts green for alt letter until attempt 5 ── */
-        if(schrodingerMode&&schrodingerPos>=0&&rowIdx<4){
-            if(guess[schrodingerPos]===schrodingerAlt||guess[schrodingerPos]===targetWord[schrodingerPos]){
+        /* ── Schrödinger: unstable slot counts green if either letter matches ── */
+        if(schrodingerMode&&schrodingerPos>=0&&schrodingerTwinWord){
+            if(guess[schrodingerPos]===targetWord[schrodingerPos]||guess[schrodingerPos]===schrodingerTwinWord[schrodingerPos]){
                 result[schrodingerPos]={l:guess[schrodingerPos],s:'correct'};
             }
         }
 
-        /* ── Gaslight: every 3rd row (rows 2,5,…), secretly swap two positions in targetWord ── */
-        if(gaslightMode&&rowIdx>0&&(rowIdx+1)%3===0){
-            var p1=Math.floor(Math.random()*wordLength);
-            var p2;do{p2=Math.floor(Math.random()*wordLength);}while(p2===p1);
-            var arr=targetWord.split('');
-            var tmp=arr[p1];arr[p1]=arr[p2];arr[p2]=tmp;
-            targetWord=arr.join('');
-            //showToast('😵 Something shifted…',1800);
+        /* ── Gaslight: every 2 guesses, pick a low-overlap new word ── */
+        if(gaslightMode&&(rowIdx+1)%2===0){
+            if(guess !== targetWord) {
+                targetWord = getGaslightWord(guess);
+                result=scoreGuess(guess,targetWord);
+            }
         }
 
         /* ── False Hope: first row forces ≥2 yellows ── */
@@ -1087,7 +1199,7 @@ function createKeyboard(){
         }
 
         /* ── Fibble: one non-absent tile per row is a lie ── */
-        if(fibbleMode){
+        if(fibbleMode && guess !== targetWord){
             var nonAbsent=[];
             for(var i=0;i<result.length;i++)if(result[i].s!=='absent')nonAbsent.push(i);
             if(nonAbsent.length>0){
@@ -1099,7 +1211,7 @@ function createKeyboard(){
         }
 
         /* ── Fake News: one completely random tile gets a wrong color ── */
-        if(fakeNewsMode){
+        if(fakeNewsMode && guess !== targetWord){
             var liePick2=Math.floor(Math.random()*result.length);
             var oldS2=result[liePick2].s;
             var all2=['correct','present','absent'].filter(function(s){return s!==oldS2;});
@@ -1107,7 +1219,7 @@ function createKeyboard(){
         }
 
         /* ── Mirror: swap correct↔present ── */
-        if(mirrorMode){
+        if(mirrorMode && guess !== targetWord){
             result=result.map(function(e){
                 var s=e.s==='correct'?'present':e.s==='present'?'correct':e.s;
                 return{l:e.l,s:s};
@@ -1117,8 +1229,7 @@ function createKeyboard(){
         return result;
     }
 
-    function revealTiles(prefix,guessLetters,result,callback){
-        var isWin=result.every(function(e){return e.s==='correct';});
+    function revealTiles(prefix,guessLetters,result,isWin,callback){
         result.forEach(function(entry,i){
             var status=entry.s, letter=entry.l;
             setTimeout(function(){
@@ -1192,23 +1303,31 @@ function createKeyboard(){
         });
         var nmC=document.getElementById('numbermode-toggle');
         var mwC=document.getElementById('multiword-toggle'),tmC=document.getElementById('timed-toggle');
+        var mixedC=document.getElementById('mixedmode-toggle'),mixedL=document.getElementById('mixedmode-toggle-label');
         var mwE=document.getElementById('multiword-extra'),tmE=document.getElementById('timed-extra');
         var hhC=document.getElementById('hiddenhint-toggle'),hhE=document.getElementById('hiddenhint-extra');
         if(mwC&&mwE)mwC.addEventListener('change',function(){mwE.classList.toggle('hidden',!mwC.checked);});
+        function syncMixedVisibility(){
+            if(!mixedL||!mixedC||!nmC||!mwC)return;
+            var show=nmC.checked&&mwC.checked;
+            mixedL.classList.toggle('hidden',!show);
+            if(!show)mixedC.checked=false;
+        }
+        if(mwC)mwC.addEventListener('change',syncMixedVisibility);
         if(tmC&&tmE)tmC.addEventListener('change',function(){tmE.classList.toggle('hidden',!tmC.checked);});
         if(hhC&&hhE)hhC.addEventListener('change',function(){hhE.classList.toggle('hidden',!hhC.checked);});
         if(nmC){
             nmC.addEventListener('change',function(){
                 var nm=nmC.checked;
                 var rf=document.getElementById('revealfirst-toggle');
-                var mw=document.getElementById('multiword-toggle');
                 var dr=document.getElementById('dictrestrict-toggle');
                 if(rf)rf.disabled=nm;
-                if(mw)mw.disabled=nm;
                 if(dr)dr.disabled=nm;
-                if(nm){if(rf)rf.checked=false;if(mw)mw.checked=false;if(dr)dr.checked=false;}
+                if(nm){if(rf)rf.checked=false;if(dr)dr.checked=false;}
+                syncMixedVisibility();
             });
         }
+        syncMixedVisibility();
 
         /* Show hint-unlock sub-input whenever hints > 0 */
         var hintsInput=document.getElementById('custom-hints-input');
@@ -1236,16 +1355,20 @@ function createKeyboard(){
             var mw=document.getElementById('multiword-toggle').checked;
             var timed=document.getElementById('timed-toggle').checked;
             var numberMode=document.getElementById('numbermode-toggle')&&document.getElementById('numbermode-toggle').checked;
+            var mixedMode=document.getElementById('mixedmode-toggle')&&document.getElementById('mixedmode-toggle').checked;
             var timerV=parseInt(document.getElementById('custom-timer-input').value)||60;
             var word2=mw?document.getElementById('custom-word2-input').value.toUpperCase().trim():'';
-            if(numberMode){
+            if(numberMode&&!mixedMode){
                 if(!word||!/^[0-9]+$/.test(word)){showToast('Number mode: Word must only contain digits 0-9.');return;}
                 if(word.length<1||word.length>15){showToast('Number must be 1-15 digits long.');return;}
             }else{
                 if(!word||!/^[A-Z]+$/.test(word)){showToast('Word must only contain letters A-Z.');return;}
                 if(word.length<2||word.length>15){showToast('Word must be 2-15 letters long.');return;}
             }
-            if(mw&&(!word2||!/^[A-Z]+$/.test(word2))){showToast('Second word must only contain letters A-Z.');return;}
+            if(mw&&mixedMode&&!/^[A-Z]+$/.test(word)){showToast('Mixed mode: Board 1 must be letters.');return;}
+            if(mw&&mixedMode&&(!word2||!/^[0-9]+$/.test(word2))){showToast('Mixed mode: Board 2 must be digits.');return;}
+            if(mw&&!mixedMode&&numberMode&&(!word2||!/^[0-9]+$/.test(word2))){showToast('Second number format invalid.');return;}
+            if(mw&&!mixedMode&&!numberMode&&(!word2||!/^[A-Z]+$/.test(word2))){showToast('Second word format invalid.');return;}
             if(mw&&word2.length!==word.length){showToast('Both words must be the same length.');return;}
             if(timed&&timerV<10){showToast('Timer must be at least 10 seconds.');return;}
             var btn=document.getElementById('generate-link-button');
@@ -1270,7 +1393,8 @@ dictRestrict:document.getElementById('dictrestrict-toggle')&&document.getElement
                           noReuse:document.getElementById('noreuse-toggle')&&document.getElementById('noreuse-toggle').checked,
                           blind:document.getElementById('blind-toggle')&&document.getElementById('blind-toggle').checked,
                           numberMode:numberMode,
-showModes:document.getElementById('showmodes-toggle')&&document.getElementById('showmodes-toggle').checked,
+                          mixedMode:mixedMode,
+                          showModes:document.getElementById('showmodes-toggle')&&document.getElementById('showmodes-toggle').checked,
                           hintUnlock:(function(){var v=parseInt((document.getElementById('hiddenhint-after-input')||{}).value,10);return(v>0&&parseInt(document.getElementById('custom-hints-input').value,10)>0)?v:0;})(),
                           hintText:(document.getElementById('custom-hint-text-input')||{}).value||''};
                 var d=await seal(pack(cfg),keyBuf);
