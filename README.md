@@ -34,39 +34,80 @@ A fully-featured Wordle clone with a powerful puzzle creator, multiple game mode
 
 ### Game Modes
 
-The puzzle creator includes 29 game modes (core + chaos + hard modes):
+The puzzle creator includes 33 game modes across 5 categories:
+
+#### 🎨 Visual / Feedback Modes
 
 | Mode | Icon | Description |
 |------|------|-------------|
-| **Glitch** | ⚡ | Tiles randomly flicker with wrong letters (aggressive) |
-| **Hide on loss** | 🙈 | The answer stays secret if you lose |
-| **No feedback** | 🔇 | No colors revealed - pure guessing |
-| **No backspace** | 🚫 | Cannot delete letters once typed |
-| **One strike** | 💀 | Wrong guess ends the game immediately |
-| **Reveal first** | 🔤 | First letter is given for free |
-| **Share result** | 📊 | Copy emoji grid result to clipboard |
-| **Multi-word** | 🧩 | Guess two words simultaneously |
-| **Timed mode** | ⏱ | Race against a countdown timer |
-| **Fibble** | 🤥 | One color per row lies about the answer |
-| **Absurdle** | 👾 | Word shifts to avoid your guesses |
+| **Glitch** | ⚡ | Tiles randomly flicker with wrong letters |
+| **Hide on Loss** | 🙈 | The answer stays secret if you lose |
+| **No Feedback** | 🔇 | No colors revealed — pure guessing |
 | **Mirror** | 🪞 | Green and Yellow feedback are reversed |
-| **Fake News** | 📰 | One random tile gives wrong feedback |
-| **Gaslighting** | 😵 | Word changes every 2 guesses |
-| **Schrödinger** | 🐱 | One slot contains two letters at once |
-| **False Hope** | 🌝 | First row fakes 2 yellow tiles |
-| **Mimic** | 🎭 | Your first guess becomes the word |
-| **Dict Restrict** | 📖 | Next guess must start with same letter |
-| **Number Mode** | 🔢 | Guess numbers instead of words |
-| **No Reuse** | 🔒 | Can't guess letters marked as absent |
 | **Blind Mode** | 👁️‍🗨️ | Keyboard doesn't show feedback |
-| **Shuffle** | 🔀 | Secret letters reshuffle each guess |
-| **Decay** | ⏳ | A keyboard key decays every 2 guesses |
-| **Memory** | 🧠 | Revealed tiles hide after 2 seconds |
-| **Reverse** | 🔄 | Match a target feedback pattern |
-| **Minefield** | 💣 | Mine slots can cost extra guesses |
-| **Anagram** | 🔡 | Guess using only provided letters |
-| **Sniper** | 🎯 | One guess only |
-| **Spiral** | 🌀 | Clear 3→4→5→6 letter rounds |
+
+#### ⚙️ Input Restriction Modes
+
+| Mode | Icon | Description |
+|------|------|-------------|
+| **No Backspace** | 🚫 | Cannot delete letters once typed |
+| **No Reuse** | 🔒 | Can't guess letters marked as absent |
+| **Reveal First** | 🔤 | First letter is given for free |
+| **Dict Restrict** | 📖 | Next guess must start with same letter as previous |
+| **Chain** | 🔗 | Each guess must start with the last letter of your previous guess |
+
+#### 💀 Difficulty / Penalty Modes
+
+| Mode | Icon | Description |
+|------|------|-------------|
+| **One Strike** | 💀 | Wrong guess ends the game immediately |
+| **Sniper** | 🎯 | One guess only — make it count |
+| **Blitz** | ⚡ | Only 3 guesses total |
+| **Decay** | ⏳ | A keyboard key is permanently disabled every 2 guesses |
+| **Minefield** | 💣 | 2 secret mine positions — wrong letter there costs an extra guess |
+
+#### 🧠 Memory / Hidden Info Modes
+
+| Mode | Icon | Description |
+|------|------|-------------|
+| **Memory** | 🧠 | Revealed tiles hide after 2 seconds (keyboard still updates) |
+| **Void** | 🕳️ | One tile always shows grey regardless of the true answer |
+| **Fake News** | 📰 | One random tile gives wrong feedback |
+| **False Hope** | 🌝 | First row fakes 2 yellow tiles |
+
+#### 🔀 Word-Changing Modes
+
+| Mode | Icon | Description |
+|------|------|-------------|
+| **Absurdle** | 👾 | Word shifts to keep as many candidates alive as possible |
+| **Gaslighting** | 😵 | Word changes every 2 guesses to maximize confusion |
+| **Schrödinger** | 🐱 | One slot contains two letters — either counts as green |
+| **Shuffle** | 🔀 | Secret word letters reshuffle positions after each guess |
+
+#### 🧩 Special / Unique Modes
+
+| Mode | Icon | Description |
+|------|------|-------------|
+| **Fibble** | 🤥 | One color per row lies about the answer |
+| **Mimic** | 🎭 | Your first guess becomes the new secret word |
+| **Reverse** | 🔄 | You see the answer — find a guess that produces the target pattern |
+| **Anagram** | 🔡 | All letters revealed scrambled; you must use only those letters |
+| **Spiral** | 🌀 | Sequential rounds: 3→4→5→6 letter words, all must be solved |
+| **Multi-word** | 🧩 | Guess two words simultaneously; win requires solving both |
+
+#### 📊 Utility / Sharing Modes
+
+| Mode | Icon | Description |
+|------|------|-------------|
+| **Share Result** | 📊 | Copy emoji grid result to clipboard after game |
+| **Timed Mode** | ⏱ | Race against a countdown timer |
+| **Book Mode** | 📚 | Creator sets a pool of 5–30 words; each player is randomly assigned one |
+
+#### 🔢 Number Mode
+
+| Mode | Icon | Description |
+|------|------|-------------|
+| **Number Mode** | 🔢 | Guess a number instead of a word; works with Multi-word for dual number boards or hybrid (one letter board + one number board) |
 
 ### Advanced Features
 - **Progress restore** - Resume games after page refresh
@@ -90,8 +131,9 @@ The puzzle creator includes 29 game modes (core + chaos + hard modes):
    - Max attempts per player
    - Max concurrent players
 4. Enable any game modes you want
-5. Click "Generate Link"
-6. Share the generated link with players
+5. *(Book Mode only)* Paste your word pool (5–30 words, one per line) in the text panel that appears
+6. Click "Generate Link"
+7. Share the generated link with players
 
 ### Link Structure
 
@@ -100,16 +142,20 @@ Puzzle links contain encrypted configuration data:
 - Game settings (guesses, hints, etc.)
 - Enabled game modes
 - Player limits
+- Book Mode word pool (when enabled)
 
 The links use URL fragments for the decryption key, ensuring the actual word never hits the server.
 
 ### Mode Compatibility
 
-Most modes are combinable. A few are intentionally constrained in the creator when they are logically exclusive:
+Most modes are freely combinable. A few are intentionally constrained:
 
-- **Spiral** is single-board, letter-only.
-- Some hard modes are restricted to single-board play.
-- **Mixed Mode** is available when both **Multi-word** and **Number Mode** are enabled.
+| Rule | Detail |
+|------|--------|
+| **Spiral** | Single-board, letter-only — not compatible with Multi-word or Number Mode |
+| **One Strike + Blitz** | One Strike takes priority (1 guess overrides 3) |
+| **Mixed Mode** | Available when both Multi-word and Number Mode are enabled |
+| **Hard modes** | Some hard modes are restricted to single-board play |
 
 ## Security
 
@@ -213,16 +259,26 @@ var LOCAL_DEV = true;
 | `script.js:720-870` | Board, keyboard, and input handling |
 | `netlify/functions/play.mjs` | Server-side play tracking |
 
+## 🚧 Known Issues / Roadmap
+
+- [ ] *(Add known bugs or limitations here)*
+- [ ] *(Add planned features here)*
+- [ ] *(Add future mode ideas here)*
+
 ## License
 
 This project is provided for educational and personal use.
 
 ## Important Notes
 
-- **Win detection is mode-safe:** Correct guesses end the game across standard, deceptive, and hard modes.
+- **Win detection is mode-safe:** Correct guesses end the game across all modes including deceptive and hard modes.
 - **No Reuse is enforced as a hard restriction:** guesses containing known absent letters are blocked.
-- **Absurdle/Gaslighting behavior is intentionally adversarial:** answer handling can shift mid-game by design.
-- **Creator grid layout is fixed to consistent 3-column card behavior (no stretched final Number Mode card).**
+- **Absurdle/Gaslighting behavior is intentionally adversarial:** the answer can shift mid-game by design.
+- **Reverse Mode:** winning requires producing the exact target feedback pattern — typing the secret word is not an automatic win.
+- **Void Mode:** win detection always uses the true answer, not the misleading feedback shown to the player.
+- **Chain Mode:** the first guess has no chain restriction; all subsequent guesses must start with the last letter of the previous guess.
+- **Book Mode:** the creator's word pool is encoded in the link; each player is randomly assigned one word per session.
+- **Creator grid is perfectly aligned:** 33 modes in an 11×3 grid with no stretched or misaligned cards.
 
 ## Credits
 

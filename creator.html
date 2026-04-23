@@ -267,7 +267,7 @@
                                 class="rule-card-sub">Guess two words at once</span></div>
                         <div class="rule-check"></div>
                     </label>
-                    <label class="rule-card hidden" id="mixedmode-toggle-label">
+                    <label class="hidden rule-card mixed-mode-card" id="mixedmode-toggle-label">
                         <input type="checkbox" id="mixedmode-toggle">
                         <div class="rule-card-icon">🔄</div>
                         <div class="rule-card-text">
@@ -423,6 +423,40 @@
                                 class="rule-card-sub">3→6 letters by round</span></div>
                         <div class="rule-check"></div>
                     </label>
+                    <label class="rule-card" id="chain-toggle-label">
+                        <input type="checkbox" id="chain-toggle">
+                        <div class="rule-card-icon">🔗</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Chain</span><span
+                                class="rule-card-sub">Next starts with last</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="bookmode-toggle-label">
+                        <input type="checkbox" id="bookmode-toggle">
+                        <div class="rule-card-icon">📖</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Book Mode</span><span
+                                class="rule-card-sub">Players get different words</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="void-toggle-label">
+                        <input type="checkbox" id="void-toggle">
+                        <div class="rule-card-icon">🕳️</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Void</span><span
+                                class="rule-card-sub">One tile always wrong</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                    <label class="rule-card" id="blitz-toggle-label">
+                        <input type="checkbox" id="blitz-toggle">
+                        <div class="rule-card-icon">⚡</div>
+                        <div class="rule-card-text"><span class="rule-card-title">Blitz</span><span
+                                class="rule-card-sub">Only 3 guesses total</span></div>
+                        <div class="rule-check"></div>
+                    </label>
+                </div>
+                <div id="bookmode-extra" class="rule-extra hidden">
+                    <div class="bookmode-wrap">
+                        <textarea id="bookmode-words-input" placeholder="Enter one word per line (5–30 words)..."></textarea>
+                        <div id="bookmode-word-count" class="bookmode-count">0 words added</div>
+                    </div>
                 </div>
                 <div id="multiword-extra" class="rule-extra hidden">
                     <div class="input-group">
