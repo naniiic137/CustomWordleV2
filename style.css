@@ -249,12 +249,6 @@ main {
     grid-template-columns:1fr 1fr 1fr;
     gap:0.6rem;
 }
-.rule-cards-grid .rule-card:last-child:nth-child(3n+1) {
-    grid-column: 1 / -1;
-}
-.rule-cards-grid .rule-card:last-child:nth-child(3n+2) {
-    grid-column: 2 / -1;
-}
 
 .rule-card {
     display:flex; align-items:center; gap:0.5rem;

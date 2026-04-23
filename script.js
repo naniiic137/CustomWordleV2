@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var w=cfg.word.toUpperCase(),w2=(cfg.word2||'').toUpperCase(),mw=w2.length>0;
         var flags=(cfg.hide?1:0)|(cfg.nocol?2:0)|(cfg.nobk?4:0)|(cfg.one?8:0)|(cfg.rf?16:0)|(cfg.sd?32:0)|(mw?64:0)|(cfg.timed?128:0);
         var flags2=(cfg.fibble?1:0)|(cfg.absurdle?2:0)|(cfg.mirror?4:0)|(cfg.fakenews?8:0)|(cfg.gaslight?16:0)|(cfg.schrodinger?32:0)|(cfg.falsehope?64:0)|(cfg.mimic?128:0);
+        var flags4=(cfg.shuffle?1:0)|(cfg.decay?2:0)|(cfg.memory?4:0)|(cfg.reverse?8:0)|(cfg.minefield?16:0)|(cfg.anagram?32:0)|(cfg.sniper?64:0)|(cfg.spiral?128:0);
         var mp=cfg.maxPlayers||0;
         /* flags3 bit layout: 1=showModes, 2=dictRestrict, 4=glitch, 8=hasMaxPlayers, 16=numberMode, 32=noReuse, 64=blind, 128=mixedMode */
         var flags3=(cfg.showModes?1:0)|(cfg.dictRestrict?2:0)|(cfg.glitch?4:0)|(mp>0?8:0)|(cfg.numberMode?16:0)|(cfg.noReuse?32:0)|(cfg.blind?64:0)|(cfg.mixedMode?128:0);
@@ -90,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function () {
             header.push(ht.length&0xff);
             for(var h=0;h<ht.length;h++)header.push(ht.charCodeAt(h));
         }
+        if(flags4)header.push(0x03,flags4);
         return new Uint8Array(header);
     }
 
@@ -100,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var f=u[i++],hints=u[i++],guesses=u[i++],plays=u[i++],used=u[i++];
         var timer=(u[i++]<<8)|u[i++],w2='';
         if(f&64){var w2l=u[i++];for(var c=0;c<w2l;c++)w2+=String.fromCharCode(u[i++]);}
-        var f2=0,hintUnlock=0,f3=0,maxPlayers=0;
+        var f2=0,hintUnlock=0,f3=0,f4=0,maxPlayers=0;
         var savedGuesses=[],savedGuesses2=[];
         /* New links start this section with magic byte 0x01.
            Old links go straight to 0x00 (progress marker) or end of buffer. */
@@ -122,6 +124,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     hintText=htArr.join('');
                 }
             }
+            if(i<u.length&&u[i]===0x03){
+                i++;
+                f4=u[i++]||0;
+            }
         }
         if(i<u.length&&u[i]===0){
             i++;
@@ -129,6 +135,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         return{word:w,word2:w2,hide:!!(f&1),nocol:!!(f&2),nobk:!!(f&4),one:!!(f&8),rf:!!(f&16),sd:!!(f&32),timed:!!(f&128),
                fibble:!!(f2&1),absurdle:!!(f2&2),mirror:!!(f2&4),fakenews:!!(f2&8),gaslight:!!(f2&16),schrodinger:!!(f2&32),falsehope:!!(f2&64),mimic:!!(f2&128),
+               shuffle:!!(f4&1),decay:!!(f4&2),memory:!!(f4&4),reverse:!!(f4&8),minefield:!!(f4&16),anagram:!!(f4&32),sniper:!!(f4&64),spiral:!!(f4&128),
                showModes:!!(f3&1),dictRestrict:!!(f3&2),glitch:!!(f3&4),
                numberMode:!!(f3&16),noReuse:!!(f3&32),blind:!!(f3&64),mixedMode:!!(f3&128),
                hints:hints,guesses:guesses,plays:plays,used:used,timer:timer,hintUnlock:hintUnlock,maxPlayers:maxPlayers,savedGuesses:savedGuesses,savedGuesses2:savedGuesses2,hintText:hintText};
@@ -303,6 +310,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var fibbleMode=false,absurdleMode=false,mirrorMode=false,fakeNewsMode=false;
     var gaslightMode=false,schrodingerMode=false,falseHopeMode=false,mimicMode=false;
     var dictRestrictMode=false,glitchMode=false,numberMode=false,noReuseMode=false,blindMode=false;
+    var shuffleMode=false,decayMode=false,memoryMode=false,reverseMode=false,minefieldMode=false,anagramMode=false,sniperMode=false,spiralMode=false;
     var hintUnlockAfter=0,showModesFlag=false;
     var glitchInterval=null;
     /* Absurdle: surviving word candidates */
@@ -313,6 +321,33 @@ document.addEventListener('DOMContentLoaded', function () {
     var falseHopeFired=false,falseHopeFakes=[];
     /* Mimic: set once first guess submitted */
     var mimicReady=false;
+    var decayLockedKeys={};
+    var minePositions=[];
+    var reverseTargetPattern='';
+    var spiralRound=0,spiralLengths=[3,4,5,6];
+
+    function shuffleWord(word){
+        var a=word.split('');
+        for(var i=a.length-1;i>0;i--){
+            var j=Math.floor(Math.random()*(i+1));
+            var t=a[i];a[i]=a[j];a[j]=t;
+        }
+        return a.join('');
+    }
+    function scoreKeyFromResult(result){
+        return result.map(function(e){return e.s==='correct'?'C':e.s==='present'?'P':'A';}).join('');
+    }
+    function patternToEmoji(key){
+        return key.split('').map(function(k){return k==='C'?'🟩':k==='P'?'🟨':'⬛';}).join('');
+    }
+    function pickWordForLength(len){
+        var list=getAbsurdleList(len).filter(function(w){return w.length===len;});
+        if(!list.length){
+            var fallback='WORDLE'.slice(0,len);
+            return fallback.toUpperCase();
+        }
+        return list[Math.floor(Math.random()*list.length)].toUpperCase();
+    }
 
     /* ═══════════════════════════════════════════════════════
        INIT
@@ -355,8 +390,26 @@ document.addEventListener('DOMContentLoaded', function () {
             fibbleMode=cfg.fibble;absurdleMode=cfg.absurdle;mirrorMode=cfg.mirror;fakeNewsMode=cfg.fakenews;
             gaslightMode=cfg.gaslight;schrodingerMode=cfg.schrodinger;falseHopeMode=cfg.falsehope;mimicMode=cfg.mimic;
             dictRestrictMode=cfg.dictRestrict;glitchMode=cfg.glitch;numberMode=cfg.numberMode;noReuseMode=cfg.noReuse;blindMode=cfg.blind;
+            shuffleMode=cfg.shuffle;decayMode=cfg.decay;memoryMode=cfg.memory;reverseMode=cfg.reverse;minefieldMode=cfg.minefield;anagramMode=cfg.anagram;sniperMode=cfg.sniper;spiralMode=cfg.spiral;
             hintUnlockAfter=cfg.hintUnlock||0;showModesFlag=cfg.showModes;
             mixedMode=cfg.mixedMode;
+            if(sniperMode)maxGuesses=1;
+            if(minefieldMode){
+                minePositions=[];
+                while(minePositions.length<Math.min(2,wordLength)){
+                    var pos=Math.floor(Math.random()*wordLength);
+                    if(minePositions.indexOf(pos)===-1)minePositions.push(pos);
+                }
+            }
+            if(reverseMode){
+                var sample=pickWordForLength(wordLength);
+                reverseTargetPattern=scoreAgainst(sample,targetWord);
+            }
+            if(spiralMode){
+                spiralRound=0;
+                wordLength=spiralLengths[spiralRound];
+                targetWord=pickWordForLength(wordLength);
+            }
 
             /* Absurdle: init candidates to full word list, ensure creator's word is included */
             if(absurdleMode){
@@ -600,6 +653,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function initializeGame(savedProgress){
         applyDynamicSizing();createBoard();createKeyboard();
         updateHintButton();updatePlaysCounter();showActiveModes();
+        showModeInfoBanner();
         
         /* Show custom hint text if provided */
         if(hintText){
@@ -625,6 +679,21 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if(timedMode)startTimer();
         if(glitchMode)startGlitch();
+    }
+
+    function showModeInfoBanner(){
+        var old=document.getElementById('mode-info-banner');
+        if(old)old.remove();
+        var txt='';
+        if(reverseMode)txt='Reverse: Secret '+targetWord+' | Target '+patternToEmoji(reverseTargetPattern);
+        else if(anagramMode)txt='Anagram letters: '+shuffleWord(targetWord);
+        else if(spiralMode)txt='Spiral round '+(spiralRound+1)+'/4 • '+wordLength+' letters';
+        if(!txt)return;
+        var el=document.createElement('div');
+        el.id='mode-info-banner';
+        el.className='custom-hint-text';
+        el.textContent=txt;
+        gameContainer.insertBefore(el,gameBoard);
     }
 
     function restoreProgress(savedG, savedG2, partial){
@@ -776,6 +845,14 @@ document.addEventListener('DOMContentLoaded', function () {
         if(noReuseMode)modes.push('🔒 No Reuse');
         if(mixedMode)modes.push('🔄 Mixed Mode');
         if(blindMode)modes.push('👁️‍🗨️ Blind');
+        if(shuffleMode)modes.push('🔀 Shuffle');
+        if(decayMode)modes.push('⏳ Decay');
+        if(memoryMode)modes.push('🧠 Memory');
+        if(reverseMode)modes.push('🔄 Reverse');
+        if(minefieldMode)modes.push('💣 Minefield');
+        if(anagramMode)modes.push('🔡 Anagram');
+        if(sniperMode)modes.push('🎯 Sniper');
+        if(spiralMode)modes.push('🌀 Spiral');
         if(hintUnlockAfter>0)modes.push('🔒 Hint after '+hintUnlockAfter);
         if(!modes.length)return;
         var bar=document.createElement('div');bar.className='mode-bar';
@@ -979,6 +1056,10 @@ function createKeyboard(){
             if(absurdleCandidates.length===1)return guess===absurdleCandidates[0].toUpperCase();
             return false;
         }
+        if(reverseMode){
+            if(guess===targetWord)return true;
+            return scoreAgainst(guess,targetWord)===reverseTargetPattern;
+        }
         if(guess===targetWord)return true;
         if(schrodingerMode&&schrodingerTwinWord&&guess===schrodingerTwinWord)return true;
         return false;
@@ -1022,6 +1103,7 @@ function createKeyboard(){
     function handleKeyPress(e){
         if(isGameOver)return;
         var key=e.key.toUpperCase();
+        if(decayMode&&decayLockedKeys[key]){showToast('That key has decayed.');return;}
         if(key==='ENTER')submitGuess();
         else if((key==='BACKSPACE'||key==='\u232b')&&!noBackspace)deleteLetter();
         else if(key.length===1&&key>='0'&&key<='9'&&(numberMode||mixedMode))addLetter(key);
@@ -1079,6 +1161,10 @@ function createKeyboard(){
         if(multiWord){submitMultiGuess();return;}
         if(currentCol!==wordLength){shakeRow('Not enough letters');return;}
         var guess='';for(var i=0;i<wordLength;i++)guess+=document.getElementById('tile-'+currentRow+'-'+i).textContent;
+        if(anagramMode){
+            var s1=guess.split('').sort().join(''),s2=targetWord.split('').sort().join('');
+            if(s1!==s2){shakeRow('Only use the given letters!');return;}
+        }
 
         /* ── Dict Restrict: guess must start with same letter as previous guess ── */
         if(dictRestrictMode&&currentRow>0){
@@ -1092,9 +1178,39 @@ function createKeyboard(){
         var noReuseHit=hasNoReuseViolation(guess,guessGrid);
         if(noReuseHit){shakeRow("You already know that letter isn't in the word!");return;}
 
+        if(shuffleMode&&guess!==targetWord){
+            targetWord=shuffleWord(targetWord);
+            if(reverseMode)reverseTargetPattern=scoreAgainst(pickWordForLength(wordLength),targetWord);
+        }
+
         var actualWin = isPrimaryWinGuess(guess);
         var result=scoreGuess(guess,targetWord);
         result=applyModeScore(result,guess,currentRow);guessGrid.push(result.slice());
+        if(minefieldMode&&!actualWin){
+            var penalty=false;
+            for(var m=0;m<minePositions.length;m++){
+                var pos=minePositions[m];
+                if(result[pos]&&result[pos].s==='absent'){penalty=true;break;}
+            }
+            if(penalty){
+                currentRow++;
+                showToast('💣 Mine hit! You lost one extra guess.');
+            }
+        }
+        if(decayMode&&(currentRow+1)%2===0){
+            var keys=Array.from(document.querySelectorAll('.key')).filter(function(k){
+                var t=k.textContent;
+                return /^[A-Z0-9]$/.test(t);
+            });
+            keys=keys.filter(function(k){return !decayLockedKeys[k.textContent];});
+            if(keys.length){
+                var lock=keys[Math.floor(Math.random()*keys.length)];
+                decayLockedKeys[lock.textContent]=true;
+                lock.classList.add('absent');
+                lock.disabled=true;
+                showToast('⏳ "'+lock.textContent+'" decayed away');
+            }
+        }
         saveProgress();
         revealTiles('tile',guess.split(''),result,actualWin,function(w){checkSingleState(w);});
     }
@@ -1240,13 +1356,37 @@ function createKeyboard(){
                     if(kEl){var rank=function(s){return s==='correct'?2:s==='present'?1:0;};if(!noColorFeedback){if(rank(status)>rank(kEl.dataset.status||'')){kEl.classList.remove('present','absent','correct');kEl.classList.add(status);kEl.dataset.status=status;}}else if(status==='correct'){kEl.classList.remove('present','absent','correct');kEl.classList.add('correct');kEl.dataset.status='correct';}}
                 }
                 if(i===wordLength-1)setTimeout(function(){if(callback)callback(isWin);},50);
+                if(memoryMode&&i===wordLength-1){
+                    (function(row,pfx){
+                        setTimeout(function(){
+                            if(isGameOver)return;
+                            for(var mc=0;mc<wordLength;mc++){
+                                var mt=document.getElementById(pfx+'-'+row+'-'+mc);
+                                if(!mt)continue;
+                                mt.textContent='';
+                                mt.classList.remove('filled','correct','present','absent','absent-silent');
+                            }
+                        },2000);
+                    })(currentRow,prefix);
+                }
             },i*300);
         });
     }
 
     function checkSingleState(isWin){
         setTimeout(function(){
-            if(isWin){var tiles=document.querySelectorAll('[id^="tile-'+currentRow+'-"]');tiles.forEach(function(t,i){setTimeout(function(){t.classList.add('jump');},i*100);});isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(true);else showWinOverlay();}
+            if(isWin){
+                if(spiralMode&&spiralRound<spiralLengths.length-1){
+                    spiralRound++;
+                    wordLength=spiralLengths[spiralRound];
+                    targetWord=pickWordForLength(wordLength);
+                    currentRow=0;currentCol=0;guessGrid=[];isGameOver=false;
+                    showToast('🌀 Spiral round '+(spiralRound+1)+' / 4');
+                    applyDynamicSizing();createBoard();createKeyboard();showModeInfoBanner();updateHintButton();saveProgress();
+                    return;
+                }
+                var tiles=document.querySelectorAll('[id^="tile-'+currentRow+'-"]');tiles.forEach(function(t,i){setTimeout(function(){t.classList.add('jump');},i*100);});isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(true);else showWinOverlay();
+            }
             else if(oneStrike){isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(false);else showLossOverlay();}
             else if(currentRow===maxGuesses-1){isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(false);else showLossOverlay();}
             else{isGameOver=false;currentRow++;currentCol=0;updateHintButton();}
@@ -1293,6 +1433,10 @@ function createKeyboard(){
             {check:'falsehope-toggle',label:'falsehope-toggle-label'},{check:'mimic-toggle',label:'mimic-toggle-label'},
             {check:'dictrestrict-toggle',label:'dictrestrict-toggle-label'},{check:'glitch-toggle',label:'glitch-toggle-label'},
             {check:'noreuse-toggle',label:'noreuse-toggle-label'},{check:'blind-toggle',label:'blind-toggle-label'},
+            {check:'shuffle-toggle',label:'shuffle-toggle-label'},{check:'decay-toggle',label:'decay-toggle-label'},
+            {check:'memory-toggle',label:'memory-toggle-label'},{check:'reverse-toggle',label:'reverse-toggle-label'},
+            {check:'minefield-toggle',label:'minefield-toggle-label'},{check:'anagram-toggle',label:'anagram-toggle-label'},
+            {check:'sniper-toggle',label:'sniper-toggle-label'},{check:'spiral-toggle',label:'spiral-toggle-label'},
             {check:'numbermode-toggle',label:'numbermode-toggle-label'},{check:'showmodes-toggle',label:'showmodes-toggle-label'},
             {check:'hiddenhint-toggle',label:'hiddenhint-toggle-label'}
         ];
@@ -1358,6 +1502,14 @@ function createKeyboard(){
             var mixedMode=document.getElementById('mixedmode-toggle')&&document.getElementById('mixedmode-toggle').checked;
             var timerV=parseInt(document.getElementById('custom-timer-input').value)||60;
             var word2=mw?document.getElementById('custom-word2-input').value.toUpperCase().trim():'';
+            var shuffleOn=document.getElementById('shuffle-toggle')&&document.getElementById('shuffle-toggle').checked;
+            var decayOn=document.getElementById('decay-toggle')&&document.getElementById('decay-toggle').checked;
+            var memoryOn=document.getElementById('memory-toggle')&&document.getElementById('memory-toggle').checked;
+            var reverseOn=document.getElementById('reverse-toggle')&&document.getElementById('reverse-toggle').checked;
+            var minefieldOn=document.getElementById('minefield-toggle')&&document.getElementById('minefield-toggle').checked;
+            var anagramOn=document.getElementById('anagram-toggle')&&document.getElementById('anagram-toggle').checked;
+            var sniperOn=document.getElementById('sniper-toggle')&&document.getElementById('sniper-toggle').checked;
+            var spiralOn=document.getElementById('spiral-toggle')&&document.getElementById('spiral-toggle').checked;
             if(numberMode&&!mixedMode){
                 if(!word||!/^[0-9]+$/.test(word)){showToast('Number mode: Word must only contain digits 0-9.');return;}
                 if(word.length<1||word.length>15){showToast('Number must be 1-15 digits long.');return;}
@@ -1371,6 +1523,8 @@ function createKeyboard(){
             if(mw&&!mixedMode&&!numberMode&&(!word2||!/^[A-Z]+$/.test(word2))){showToast('Second word format invalid.');return;}
             if(mw&&word2.length!==word.length){showToast('Both words must be the same length.');return;}
             if(timed&&timerV<10){showToast('Timer must be at least 10 seconds.');return;}
+            if(spiralOn&&(mw||numberMode||mixedMode)){showToast('Spiral mode is only for single-word letter games.');return;}
+            if((reverseOn||anagramOn||memoryOn||decayOn||minefieldOn||shuffleOn||sniperOn)&&mw){showToast('This new hard mode is single-board only.');return;}
             var btn=document.getElementById('generate-link-button');
             btn.textContent='Encrypting…';btn.disabled=true;
             try{
@@ -1392,6 +1546,7 @@ dictRestrict:document.getElementById('dictrestrict-toggle')&&document.getElement
                           glitch:document.getElementById('glitch-toggle')&&document.getElementById('glitch-toggle').checked,
                           noReuse:document.getElementById('noreuse-toggle')&&document.getElementById('noreuse-toggle').checked,
                           blind:document.getElementById('blind-toggle')&&document.getElementById('blind-toggle').checked,
+                          shuffle:shuffleOn,decay:decayOn,memory:memoryOn,reverse:reverseOn,minefield:minefieldOn,anagram:anagramOn,sniper:sniperOn,spiral:spiralOn,
                           numberMode:numberMode,
                           mixedMode:mixedMode,
                           showModes:document.getElementById('showmodes-toggle')&&document.getElementById('showmodes-toggle').checked,
