@@ -198,7 +198,7 @@ It runs in modern browsers that support the Web Crypto API and works on mobile.
 
 ## License
 
-This project is provided for educational and personal use.
+© 2026 Hamza Ben Ismail. All rights reserved.
 
 ## Credits
 
