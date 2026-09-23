@@ -1,284 +1,204 @@
 # Custom Wordle
 
-A fully-featured Wordle clone with a powerful puzzle creator, multiple game modes, and secure link-based puzzle sharing. Create custom word puzzles with unique rules and share them with friends via encrypted links.
+**A Wordle clone with a puzzle creator: pick any secret word, stack up to 33 game modes, and share the puzzle as an encrypted link.**
 
-**Play the game:** https://rainbow-jalebi-6d8f8c.netlify.app/creator.html
+**Live demo:** https://rainbow-jalebi-6d8f8c.netlify.app/creator.html
 
-## Table of Contents
+<p align="center">
+  <img src="docs/screenshots/game.png" alt="A puzzle in progress with Timed and Reveal First modes active" width="49%">
+  <img src="docs/screenshots/share-link.png" alt="Creator page after generating a share link" width="49%">
+</p>
 
-- [Features](#features)
-- [Game Modes](#game-modes)
-- [Puzzle Creator](#puzzle-creator)
-- [Security](#security)
-- [Technical Stack](#technical-stack)
-- [Installation](#installation)
-- [Development](#development)
-- [Project Structure](#project-structure)
+<details>
+<summary>Full creator page (all 33 modes)</summary>
+<p align="center"><img src="docs/screenshots/creator-full.png" alt="Puzzle creator with the full grid of game modes" width="70%"></p>
+</details>
 
-## Features
+## Highlights
 
-### Core Gameplay
-- **Classic Wordle mechanics** - Guess a 5-letter word in 6 tries
-- **Color-coded feedback** - Green (correct), Yellow (present), Gray (absent)
-- **Virtual keyboard** - On-screen keyboard with feedback tracking
-- **Hint system** - Reveal a random letter in the word
-- **Progress saving** - Automatic local storage of in-progress games
+- **Puzzle creator:** choose a 2–15 letter word (or a 1–15 digit number), 1–20 guesses, 0–10 hints, an optional custom hint text and hint unlock after N guesses.
+- **33 combinable game modes:** from classic twists (No Backspace, Timed, One Strike) to adversarial ones (Absurdle, Gaslighting, Fibble) and structural ones (Multi-word, Spiral, Book Mode, Number Mode).
+- **Encrypted share links:** the puzzle config is packed into a compact binary format and encrypted with AES-128-GCM in the browser. The key material lives in the URL fragment, which is never sent to the server.
+- **Play limits enforced server-side:** optional max attempts per person and max concurrent players, tracked by Netlify Functions and Netlify Blobs, with IP rate limiting.
+- **No framework:** vanilla JavaScript, HTML and CSS, with the Web Crypto API for encryption.
 
-### Puzzle Creator
-- **Custom word selection** - Set any secret word you want
-- **Configurable guesses** - 1-20 guesses per attempt
-- **Hint configuration** - 0-10 hints available
-- **Play limits** - Set max attempts per person (1-100)
-- **Lobby size** - Limit concurrent players (1-10,000)
-- **Shareable links** - Encrypted puzzle links to share with others
+## How sharing and encryption work
 
-### Game Modes
+1. The creator generates a random 16-byte **token** (`crypto.getRandomValues`).
+2. An AES-128 key is derived from the token with **PBKDF2-SHA-256** (100,000 iterations, fixed app-specific salt).
+3. The puzzle config (word, settings, mode flags, Book Mode word pool) is packed into a small byte array and encrypted with **AES-GCM** (random 12-byte IV, 128-bit auth tag).
+4. The link has the form `/?d=<iv+ciphertext>#<token>`. The browser never sends the `#fragment` to the server, so the server never sees the word or the key.
+5. For play limits, the client sends only a **SHA-256 hash of the token** as the puzzle ID, plus browser fingerprints, to the `play` function.
 
-The puzzle creator includes 33 game modes across 5 categories:
+Old links still work: the client falls back to the pre-PBKDF2 key format and to 8-byte IVs.
 
-#### 🎨 Visual / Feedback Modes
+> **What this protects and what it doesn't:** the encryption keeps the answer out of the URL in plain text and off the server, and the GCM tag makes edited links fail to decrypt. Anyone who has the full link still holds everything needed to decrypt it in the browser, so it doesn't stop a determined player with DevTools. The production build obfuscates the script to make that harder.
+
+### Attempt and lobby tracking
+
+- **Stable fingerprint:** a hash of browser/device characteristics, designed to be the same in normal and private tabs. It counts attempts per person.
+- **Session fingerprint:** the stable fingerprint plus a per-tab `sessionStorage` ID. It counts lobby seats, which expire when a tab stops sending its heartbeat (every 10 s).
+- Data is stored in **Netlify Blobs**. IP addresses are masked (`a.b.x.x`) before storage. The `play` function allows up to 30 requests per IP per minute. If the server can't be reached, limited puzzles are blocked (fail closed).
+
+## Game modes
+
+33 modes, grouped into 8 categories. Most can be combined freely.
+
+<details>
+<summary><b>Show all modes</b></summary>
+
+#### 🎨 Visual / Feedback
 
 | Mode | Icon | Description |
 |------|------|-------------|
 | **Glitch** | ⚡ | Tiles randomly flicker with wrong letters |
 | **Hide on Loss** | 🙈 | The answer stays secret if you lose |
-| **No Feedback** | 🔇 | No colors revealed — pure guessing |
-| **Mirror** | 🪞 | Green and Yellow feedback are reversed |
+| **No Feedback** | 🔇 | No colors revealed, pure guessing |
+| **Mirror** | 🪞 | Green and yellow feedback are reversed |
 | **Blind Mode** | 👁️‍🗨️ | Keyboard doesn't show feedback |
 
-#### ⚙️ Input Restriction Modes
+#### ⚙️ Input Restrictions
 
 | Mode | Icon | Description |
 |------|------|-------------|
-| **No Backspace** | 🚫 | Cannot delete letters once typed |
+| **No Backspace** | 🚫 | Can't delete letters once typed |
 | **No Reuse** | 🔒 | Can't guess letters marked as absent |
 | **Reveal First** | 🔤 | First letter is given for free |
-| **Dict Restrict** | 📖 | Next guess must start with same letter as previous |
+| **Dict Restrict** | 📖 | Next guess must start with the same letter as the previous one |
 | **Chain** | 🔗 | Each guess must start with the last letter of your previous guess |
 
-#### 💀 Difficulty / Penalty Modes
+#### 💀 Difficulty / Penalty
 
 | Mode | Icon | Description |
 |------|------|-------------|
-| **One Strike** | 💀 | Wrong guess ends the game immediately |
-| **Sniper** | 🎯 | One guess only — make it count |
+| **One Strike** | 💀 | A wrong guess ends the game immediately |
+| **Sniper** | 🎯 | One guess only, so make it count |
 | **Blitz** | ⚡ | Only 3 guesses total |
 | **Decay** | ⏳ | A keyboard key is permanently disabled every 2 guesses |
-| **Minefield** | 💣 | 2 secret mine positions — wrong letter there costs an extra guess |
+| **Minefield** | 💣 | 2 secret mine positions; a wrong letter there costs an extra guess |
 
-#### 🧠 Memory / Hidden Info Modes
+#### 🧠 Memory / Hidden Info
 
 | Mode | Icon | Description |
 |------|------|-------------|
-| **Memory** | 🧠 | Revealed tiles hide after 2 seconds (keyboard still updates) |
-| **Void** | 🕳️ | One tile always shows grey regardless of the true answer |
+| **Memory** | 🧠 | Revealed tiles hide after 2 seconds (the keyboard still updates) |
+| **Void** | 🕳️ | One tile always shows grey, whatever the real answer is |
 | **Fake News** | 📰 | One random tile gives wrong feedback |
-| **False Hope** | 🌝 | First row fakes 2 yellow tiles |
+| **False Hope** | 🌝 | The first row fakes 2 yellow tiles |
 
-#### 🔀 Word-Changing Modes
+#### 🔀 Word-Changing
 
 | Mode | Icon | Description |
 |------|------|-------------|
-| **Absurdle** | 👾 | Word shifts to keep as many candidates alive as possible |
-| **Gaslighting** | 😵 | Word changes every 2 guesses to maximize confusion |
-| **Schrödinger** | 🐱 | One slot contains two letters — either counts as green |
-| **Shuffle** | 🔀 | Secret word letters reshuffle positions after each guess |
+| **Absurdle** | 👾 | The word shifts to keep as many candidates alive as possible |
+| **Gaslighting** | 😵 | The word changes every 2 guesses to maximize confusion |
+| **Schrödinger** | 🐱 | One slot contains two letters; either one counts as green |
+| **Shuffle** | 🔀 | The secret word's letters swap positions after each guess |
 
-#### 🧩 Special / Unique Modes
+#### 🧩 Special
 
 | Mode | Icon | Description |
 |------|------|-------------|
 | **Fibble** | 🤥 | One color per row lies about the answer |
 | **Mimic** | 🎭 | Your first guess becomes the new secret word |
-| **Reverse** | 🔄 | You see the answer — find a guess that produces the target pattern |
-| **Anagram** | 🔡 | All letters revealed scrambled; you must use only those letters |
-| **Spiral** | 🌀 | Sequential rounds: 3→4→5→6 letter words, all must be solved |
-| **Multi-word** | 🧩 | Guess two words simultaneously; win requires solving both |
+| **Reverse** | 🔄 | You see the answer; find a guess that produces the target pattern |
+| **Anagram** | 🔡 | All letters are revealed scrambled, and you may only use those letters |
+| **Spiral** | 🌀 | Rounds of 3 → 4 → 5 → 6 letter words; you must solve all of them |
+| **Multi-word** | 🧩 | Guess two words at once; you win by solving both |
 
-#### 📊 Utility / Sharing Modes
-
-| Mode | Icon | Description |
-|------|------|-------------|
-| **Share Result** | 📊 | Copy emoji grid result to clipboard after game |
-| **Timed Mode** | ⏱ | Race against a countdown timer |
-| **Book Mode** | 📚 | Creator sets a pool of 5–30 words; each player is randomly assigned one |
-
-#### 🔢 Number Mode
+#### 📊 Utility / Sharing
 
 | Mode | Icon | Description |
 |------|------|-------------|
-| **Number Mode** | 🔢 | Guess a number instead of a word; works with Multi-word for dual number boards or hybrid (one letter board + one number board) |
+| **Share Result** | 📊 | Copy an emoji grid of your result to the clipboard after the game |
+| **Timed Mode** | ⏱ | Race against a countdown timer (warning state in the last 5 seconds) |
+| **Book Mode** | 📚 | The creator sets a pool of 5–30 words; each player gets one at random |
 
-### Advanced Features
-- **Progress restore** - Resume games after page refresh
-- **Dual board mode** - Solve two words at once
-- **Mixed dual board** - Board 1 letters + Board 2 numbers
-- **Timer with danger state** - Visual countdown with warning at 5 seconds
-- **Mode display** - Show active modes to players (optional)
-- **Hint unlocking** - Hints unlock after N guesses (optional)
-- **Custom hint text** - Creator can add a text hint for players
-- **Visible submit action in Number Mode** - Enter key + submit button support
+#### 🔢 Numbers
 
-## Puzzle Creator
+| Mode | Icon | Description |
+|------|------|-------------|
+| **Number Mode** | 🔢 | Guess a number instead of a word. With Multi-word you get two number boards, or a mixed setup with one letter board and one number board |
 
-### Creating a Puzzle
+</details>
 
-1. Visit the creator page at `/creator.html`
-2. Enter your secret word
-3. Configure optional settings:
-   - Number of hints (0-10)
-   - Number of guesses (1-20)
-   - Max attempts per player
-   - Max concurrent players
-4. Enable any game modes you want
-5. *(Book Mode only)* Paste your word pool (5–30 words, one per line) in the text panel that appears
-6. Click "Generate Link"
-7. Share the generated link with players
-
-### Link Structure
-
-Puzzle links contain encrypted configuration data:
-- Secret word (encrypted)
-- Game settings (guesses, hints, etc.)
-- Enabled game modes
-- Player limits
-- Book Mode word pool (when enabled)
-
-The links use URL fragments for the decryption key, ensuring the actual word never hits the server.
-
-### Mode Compatibility
-
-Most modes are freely combinable. A few are intentionally constrained:
+### Mode compatibility
 
 | Rule | Detail |
 |------|--------|
-| **Spiral** | Single-board, letter-only — not compatible with Multi-word or Number Mode |
+| **Spiral** | Single-board and letters only; not compatible with Multi-word or Number Mode |
 | **One Strike + Blitz** | One Strike takes priority (1 guess overrides 3) |
-| **Mixed Mode** | Available when both Multi-word and Number Mode are enabled |
-| **Hard modes** | Some hard modes are restricted to single-board play |
+| **Mixed mode** | Available when both Multi-word and Number Mode are enabled |
+| **Hard modes** | Some hard modes are limited to single-board play |
 
-## Security
+### Design notes
 
-### Encryption
-- **AES-128-GCM** encryption for puzzle data
-- **PBKDF2** key derivation (100,000 iterations)
-- URL fragment stores the decryption token (never sent to server)
-- Each puzzle link has a unique encryption key
+- **Win detection is mode-safe:** a correct guess ends the game in every mode, including the deceptive ones. In Void Mode, win detection uses the real answer, not the misleading feedback.
+- **Reverse Mode:** you win by producing the exact target feedback pattern. Typing the secret word doesn't count as a win.
+- **Absurdle and Gaslighting** are adversarial on purpose, so the answer can change mid-game.
+- **No Reuse** is a hard rule: guesses that contain known-absent letters are blocked.
+- **Chain Mode:** the first guess is free; every guess after that must start with the last letter of the one before.
 
-### Attempt Tracking
-- **Stable fingerprint** - Hardware-based, identical in normal and private tabs
-- **Session fingerprint** - Per-tab, for lobby seat counting
-- Server-side storage using Netlify Blobs
-- Two separate tracking systems:
-  - Per-player attempt quota (stableId)
-  - Active lobby seats (sessionId)
+## Creating a puzzle
 
-### Privacy
-- The server never sees the secret word
-- Decryption happens entirely in the browser
-- Player IPs are masked before storage
+1. Open `/creator.html`.
+2. Enter your secret word (or number, in Number Mode).
+3. Optionally set hints, guesses, hint unlock, custom hint text, max attempts per person and max players.
+4. Turn on any game modes. For Book Mode, paste a pool of 5–30 words, one per line.
+5. Click **Generate Link** and share it.
 
-## Technical Stack
+In-progress games are saved in `localStorage`, so a player can refresh the page and pick up where they left off.
 
-- **Frontend:** Vanilla JavaScript, HTML5, CSS3
+## Quick start
+
+Requirements: Node.js 18+ and the [Netlify CLI](https://docs.netlify.com/cli/get-started/) (`npm i -g netlify-cli`).
+
+```bash
+git clone https://github.com/naniiic137/CustomWordleV2.git
+cd CustomWordleV2
+npm install
+netlify dev        # serves the site and the functions in netlify/functions
+```
+
+**Frontend only:** set `var LOCAL_DEV = true;` at the top of `script.js` to skip the serverless calls. Attempt and lobby limits are then simulated in `localStorage`. Set it back to `false` before you deploy.
+
+**Build:** `index.html` and `creator.html` load `script.obf.js`. After you edit `script.js`, regenerate it with:
+
+```bash
+npm run build      # javascript-obfuscator: script.js -> script.obf.js
+```
+
+You can also point the `<script>` tags at `script.js` while you develop.
+
+## Project structure
+
+```
+├── index.html               # Game page (share links open here)
+├── creator.html             # Puzzle creator
+├── script.js                # All game logic: crypto, config packing, modes, board, keyboard
+├── script.obf.js            # Obfuscated build of script.js (the file the pages load)
+├── style.css                # Styles
+├── netlify.toml             # Publish dir + functions dir
+├── package.json             # Build script, @netlify/blobs, javascript-obfuscator
+└── netlify/functions/
+    ├── play.mjs             # Attempt quota, lobby seats, heartbeat, IP rate limit
+    ├── result.mjs           # Records win/loss and guess count for a play
+    └── verify.js            # Timing-safe check against the CREATOR_PASSWORD env var
+```
+
+## Tech stack
+
+- **Frontend:** vanilla JavaScript, HTML5, CSS3, Web Crypto API (AES-GCM, PBKDF2, SHA-256)
 - **Backend:** Netlify Functions (serverless)
 - **Storage:** Netlify Blobs
+- **Build:** javascript-obfuscator
 - **Fonts:** Space Mono, DM Sans (Google Fonts)
-- **Build:** JavaScript Obfuscator
 
-### Browser Support
-- Modern browsers with Web Crypto API support
-- Requires JavaScript enabled
-- Mobile-friendly responsive design
-
-## Installation
-
-### Prerequisites
-- Node.js 18+
-- Netlify CLI (for local development)
-
-### Setup
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd wordle-with-new-mods
-
-# Install dependencies
-npm install
-
-# Start local development server
-netlify dev
-```
-
-### Building for Production
-
-```bash
-# Build obfuscated script
-npm run build
-```
-
-The build process obfuscates `script.js` into `script.obf.js` for production deployment.
-
-## Development
-
-### Local Development
-
-Set `LOCAL_DEV = true` in `script.js` to bypass Netlify serverless calls during development:
-
-```javascript
-var LOCAL_DEV = true;
-```
-
-**Important:** Revert to `false` before deploying to production.
-
-### Project Structure
-
-```
-├── index.html          # Main game page
-├── creator.html        # Puzzle creator page
-├── script.js           # Game logic (source)
-├── script.obf.js       # Obfuscated game logic (production)
-├── style.css           # All styles
-├── package.json        # Dependencies and scripts
-├── netlify.toml        # Netlify configuration
-├── netlify/
-│   └── functions/
-│       ├── play.mjs    # Game session & attempt tracking
-│       └── verify.js   # (additional verification)
-```
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `script.js:1-110` | Crypto utilities (encryption/decryption) |
-| `script.js:112-226` | Game mode implementations (Absurdle, etc.) |
-| `script.js:228-415` | Game state and initialization |
-| `script.js:500-690` | Timer, glitch, and mode features |
-| `script.js:720-870` | Board, keyboard, and input handling |
-| `netlify/functions/play.mjs` | Server-side play tracking |
-
-## 🚧 Known Issues / Roadmap
-
-- [ ] *(Add known bugs or limitations here)*
-- [ ] *(Add planned features here)*
-- [ ] *(Add future mode ideas here)*
+It runs in modern browsers that support the Web Crypto API and works on mobile.
 
 ## License
 
 This project is provided for educational and personal use.
-
-## Important Notes
-
-- **Win detection is mode-safe:** Correct guesses end the game across all modes including deceptive and hard modes.
-- **No Reuse is enforced as a hard restriction:** guesses containing known absent letters are blocked.
-- **Absurdle/Gaslighting behavior is intentionally adversarial:** the answer can shift mid-game by design.
-- **Reverse Mode:** winning requires producing the exact target feedback pattern — typing the secret word is not an automatic win.
-- **Void Mode:** win detection always uses the true answer, not the misleading feedback shown to the player.
-- **Chain Mode:** the first guess has no chain restriction; all subsequent guesses must start with the last letter of the previous guess.
-- **Book Mode:** the creator's word pool is encoded in the link; each player is randomly assigned one word per session.
-- **Creator grid is perfectly aligned:** 33 modes in an 11×3 grid with no stretched or misaligned cards.
 
 ## Credits
 
