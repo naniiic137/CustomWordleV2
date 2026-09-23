@@ -10,6 +10,7 @@
         href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap"
         rel="stylesheet">
     <title>Custom Wordle</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -33,13 +34,11 @@
 
         <!-- Landing page shown when no puzzle link is present -->
         <div id="creator-container">
-            <div style="text-align:center; padding:2rem 1rem;">
-                <div style="font-size:3rem; margin-bottom:1rem;">🔒</div>
-                <h2
-                    style="font-family:'Space Mono',monospace; font-size:1.2rem; font-weight:700; margin-bottom:0.75rem; color:#f1f5f9;">
-                    You need a puzzle link to play</h2>
-                <p style="color:#64748b; font-size:0.9rem; line-height:1.6;">Ask the person who challenged you to send
-                    you their link.</p>
+            <div class="landing">
+                <div id="landing-icon" class="landing-icon">🔒</div>
+                <h2 id="landing-title" class="landing-title">You need a puzzle link to play</h2>
+                <p id="landing-body" class="landing-body">Ask the person who challenged you to send you their link.</p>
+                <a class="landing-make" href="creator.html">✏️ Make your own puzzle</a>
             </div>
         </div>
     </main>

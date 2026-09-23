@@ -10,6 +10,7 @@
         href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap"
         rel="stylesheet">
     <title>Create a Puzzle</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="style.css">
     <style>
         .hint-unlock-wrap {
@@ -171,23 +172,23 @@
 
             <div id="hint-unlock-wrap" class="hint-unlock-wrap hidden">
                 <span class="hint-unlock-icon">🔒</span>
-                <input type="number" id="hiddenhint-after-input" placeholder="Unlock hint after N guesses (optional)"
+                <input type="number" id="hiddenhint-after-input" placeholder="Hint unlocks after N guesses"
                     min="1" max="20">
             </div>
 
             <div class="input-group" style="margin-top: 10px;">
                 <span class="input-icon">📝</span>
-                <input type="text" id="custom-hint-text-input" placeholder="Custom hint text (optional) - e.g. 'It's a fruit'" maxlength="100">
+                <input type="text" id="custom-hint-text-input" placeholder="Hint text, e.g. It's a fruit" maxlength="100">
             </div>
 
             <div class="input-row">
                 <div class="input-group">
                     <span class="input-icon">🎯</span>
-                    <input type="number" id="custom-plays-input" placeholder="Max attempts / person" min="1" max="100">
+                    <input type="number" id="custom-plays-input" placeholder="Attempts each" min="1" max="100">
                 </div>
                 <div class="input-group">
                     <span class="input-icon">👥</span>
-                    <input type="number" id="custom-maxplayers-input" placeholder="Max players (optional)" min="1"
+                    <input type="number" id="custom-maxplayers-input" placeholder="Max players" min="1"
                         max="10000">
                 </div>
             </div>
@@ -461,7 +462,7 @@
                 <div id="multiword-extra" class="rule-extra hidden">
                     <div class="input-group">
                         <span class="input-icon">🧩</span>
-                        <input type="text" id="custom-word2-input" placeholder="Second secret word (same length)…">
+                        <input type="text" id="custom-word2-input" placeholder="Second word (same length)…">
                     </div>
                 </div>
                 <div id="timed-extra" class="rule-extra hidden">

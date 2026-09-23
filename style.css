@@ -82,21 +82,28 @@ main {
 }
 
 /* ─── Timer Bar ─── */
+/* The label sits beside the track (not on top of it) so it stays readable on phones */
 #timer-bar-wrap {
-    width:100%; background:var(--bg-card); border:1px solid var(--border);
-    border-radius:100px; height:10px; position:relative; overflow:hidden; margin-bottom:1rem;
-    display:flex; align-items:center;
+    width:100%; max-width:500px; margin-bottom:1rem;
+    display:flex; align-items:center; gap:0.6rem;
+}
+.timer-track {
+    flex:1; min-width:0; height:10px; background:var(--bg-card); border:1px solid var(--border);
+    border-radius:100px; overflow:hidden;
 }
 #timer-bar-inner {
     height:100%; width:100%; background:linear-gradient(90deg,var(--accent),#6366f1);
     border-radius:100px; transform-origin:left;
 }
 #timer-label {
-    position:absolute; right:10px; font-size:0.65rem; font-weight:700;
-    color:var(--text-muted); line-height:1;
+    flex:0 0 auto; min-width:2.8em; text-align:right;
+    font-family:'Space Mono',monospace; font-size:0.8rem; font-weight:700;
+    color:var(--text); line-height:1;
 }
+#timer-hint { font-size:0.78rem; color:var(--text-muted); margin:-0.5rem 0 0.9rem; text-align:center; }
 #timer-bar-wrap.timer-danger #timer-bar-inner { background:linear-gradient(90deg,#ef4444,#dc2626); }
-#timer-bar-wrap.timer-danger { animation:pulse-danger 0.6s ease-in-out infinite; }
+#timer-bar-wrap.timer-danger .timer-track { animation:pulse-danger 0.6s ease-in-out infinite; }
+#timer-bar-wrap.timer-danger #timer-label { color:#f87171; }
 
 /* ─── Game Board ─── */
 #game-board {
@@ -119,7 +126,13 @@ main {
 .board-label {
     font-size:0.72rem; font-weight:700; letter-spacing:0.08em;
     text-transform:uppercase; color:var(--text-muted); text-align:center;
+    border-radius:100px; padding:0.15rem 0.5rem; transition:color 0.15s, background 0.15s;
 }
+.board-half { cursor:pointer; }
+/* The board that receives typing */
+.board-half.active-board .board-label { color:#fff; background:var(--accent); }
+.board-half:not(.active-board) .board-grid { opacity:0.75; }
+#multi-hint { font-size:0.75rem; color:var(--text-muted); text-align:center; margin-top:0.9rem; max-width:420px; line-height:1.4; }
 .dual-board-wrap::after {
     content:''; position:absolute; top:0; bottom:0;
     left:50%; transform:translateX(-50%);
@@ -187,7 +200,8 @@ main {
 .key.large { font-size:0.72rem; flex:1.5; max-width:60px; }
 .key.correct { background:var(--correct); color:#fff; box-shadow:0 2px 12px rgba(74,222,128,0.3); }
 .key.present { background:var(--present); color:#fff; box-shadow:0 2px 12px rgba(251,191,36,0.25); }
-.key.absent  { background:var(--absent);  color:#9ca3af; }
+.key.absent  { background:#12141b; color:#3f4655; box-shadow:inset 0 0 0 1px #1f2230; text-decoration:line-through; text-decoration-color:rgba(100,116,139,0.6); }
+.key.absent:hover { background:#12141b; }
 
 /* ─── Hint Button ─── */
 .action-button {
@@ -233,10 +247,13 @@ main {
     border-radius:var(--radius-sm); outline:none;
     transition:border-color 0.2s,box-shadow 0.2s; text-transform:uppercase;
 }
-#creator-container input[type="number"] { text-transform:none; }
+#creator-container input[type="number"],
+#creator-container #custom-hint-text-input,
+#creator-container #share-link-input { text-transform:none; }
 #creator-container input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
 #creator-container input::placeholder { color:var(--text-muted); text-transform:none; opacity:1; }
-.input-row { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
+.input-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0.75rem; }
+.input-group input { min-width:0; text-overflow:ellipsis; }
 
 /* ─── Rules Section ─── */
 .toggles-section { display:flex; flex-direction:column; gap:0.75rem; }
@@ -248,7 +265,7 @@ main {
 /* ─── Rule Cards Grid — 2 per row ─── */
 .rule-cards-grid {
     display:grid;
-    grid-template-columns:1fr 1fr 1fr;
+    grid-template-columns:repeat(3,minmax(0,1fr));
     gap:0.6rem;
 }
 
@@ -269,7 +286,7 @@ main {
 }
 .rule-card-text { display:flex; flex-direction:column; gap:0.1rem; flex:1; min-width:0; }
 .rule-card-title { font-size:0.75rem; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.rule-card-sub   { font-size:0.63rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rule-card-sub   { font-size:0.63rem; color:var(--text-muted); line-height:1.3; }
 
 /* Check indicator dot */
 .rule-check {
@@ -440,6 +457,21 @@ main {
 }
 .end-btn:hover { transform:translateY(-2px); box-shadow:0 6px 28px rgba(99,102,241,0.5); }
 
+/* "Make your own puzzle" links (landing page and end screens) */
+.landing { text-align:center; padding:2rem 1rem; display:flex; flex-direction:column; align-items:center; gap:0.75rem; }
+.landing-icon { font-size:3rem; }
+#creator-container .landing-title { font-size:1.2rem; line-height:1.35; }
+#creator-container .landing-body { max-width:420px; font-size:0.9rem; line-height:1.6; }
+.landing-make, .end-make-link {
+    display:inline-flex; align-items:center; justify-content:center; gap:0.4rem;
+    padding:0.6rem 1.2rem; border-radius:100px; border:1px solid var(--accent);
+    color:var(--accent); font-weight:600; font-size:0.9rem; text-decoration:none;
+    transition:background 0.2s, box-shadow 0.2s;
+}
+.landing-make { margin-top:0.75rem; }
+.end-make-link { margin-top:0.25rem; font-size:0.85rem; padding:0.5rem 1rem; border-color:var(--border); }
+.landing-make:hover, .end-make-link:hover { background:var(--accent-glow); border-color:var(--accent); }
+
 /* ─── Utility ─── */
 .hidden { display:none !important; }
 
@@ -448,8 +480,14 @@ main {
     header h1 { font-size:1.1rem; }
     main { padding:1rem 0.75rem 3rem; }
     #creator-container { padding:1.25rem 1rem; }
-    .rule-cards-grid { grid-template-columns:1fr 1fr; gap:0.4rem; }
-    .rule-card { padding:0.55rem 0.6rem; gap:0.4rem; }
+    .rule-cards-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:0.4rem; }
+    .rule-card { padding:0.55rem 0.6rem; gap:0.4rem; align-items:flex-start; }
+    .rule-card-title, .rule-card-sub { white-space:normal; overflow:visible; }
+    .rule-card-sub { line-height:1.3; }
+    #creator-container input[type="text"], #creator-container input[type="number"] { font-size:0.9rem; }
+    .input-group .input-icon { left:0.7rem; }
+    .input-group input { padding-left:2.2rem !important; }
+    .show-modes-row { padding:0.75rem 0.85rem; }
     .rule-card-icon { font-size:1.1rem; }
     .rule-card-title { font-size:0.74rem; }
     .rule-card-sub { font-size:0.61rem; }
@@ -461,7 +499,7 @@ main {
     .rule-card-icon { font-size:1rem; }
     .rule-card-title { font-size:0.7rem; }
     .rule-card-sub { display:none; } /* hide sub-text on very small screens */
-    .input-row { grid-template-columns:1fr 1fr; gap:0.5rem; }
+    .input-row { gap:0.5rem; }
 }
 
 /* ─── Safe area support (iPhone notch etc.) ─── */
