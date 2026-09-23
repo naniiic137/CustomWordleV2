@@ -63,7 +63,7 @@ Old links still work: the client falls back to the pre-PBKDF2 key format and to 
 |------|------|-------------|
 | **No Backspace** | 🚫 | Can't delete letters once typed |
 | **No Reuse** | 🔒 | Can't guess letters marked as absent |
-| **Reveal First** | 🔤 | First letter is given for free |
+| **Reveal First** | 🔤 | The first letter is filled in and locked on every row |
 | **Dict Restrict** | 📖 | Next guess must start with the same letter as the previous one |
 | **Chain** | 🔗 | Each guess must start with the last letter of your previous guess |
 
@@ -104,14 +104,14 @@ Old links still work: the client falls back to the pre-PBKDF2 key format and to 
 | **Reverse** | 🔄 | You see the answer; find a guess that produces the target pattern |
 | **Anagram** | 🔡 | All letters are revealed scrambled, and you may only use those letters |
 | **Spiral** | 🌀 | Rounds of 3 → 4 → 5 → 6 letter words; you must solve all of them |
-| **Multi-word** | 🧩 | Guess two words at once; you win by solving both |
+| **Multi-word** | 🧩 | Guess two words at once; you win by solving both. Typing jumps to Word 2 once Word 1's row is full; tap a board or press Tab to switch |
 
 #### 📊 Utility / Sharing
 
 | Mode | Icon | Description |
 |------|------|-------------|
 | **Share Result** | 📊 | Copy an emoji grid of your result to the clipboard after the game |
-| **Timed Mode** | ⏱ | Race against a countdown timer (warning state in the last 5 seconds) |
+| **Timed Mode** | ⏱ | Race against a countdown timer. The clock starts on your first letter and keeps running across page reloads (warning state in the last 5 seconds) |
 | **Book Mode** | 📚 | The creator sets a pool of 5–30 words; each player gets one at random |
 
 #### 🔢 Numbers
@@ -147,7 +147,15 @@ Old links still work: the client falls back to the pre-PBKDF2 key format and to 
 4. Turn on any game modes. For Book Mode, paste a pool of 5–30 words, one per line.
 5. Click **Generate Link** and share it.
 
-In-progress games are saved in `localStorage`, so a player can refresh the page and pick up where they left off.
+In-progress games are saved in `localStorage`, so a player can refresh the page and pick up where they left off. The timer in Timed Mode is saved too, so reloading does not give extra time.
+
+Other player-facing details:
+
+- The number of guesses set in the creator (1–20) is the number of rows on the board. Blitz (3) and Sniper (1) override it.
+- Input is ignored while a submitted row is flipping, so a guess can't be changed after Enter.
+- Letters known to be absent are greyed out and struck through on the keyboard. In Multi-word games a letter is greyed only once it is ruled out for both words.
+- A link that was cut off while copying (for example, missing the part after `#`) shows a "link looks damaged or incomplete" message instead of the generic landing page.
+- The landing page and the end-of-game screens link to the creator ("Make your own puzzle").
 
 ## Quick start
 
@@ -178,6 +186,7 @@ You can also point the `<script>` tags at `script.js` while you develop.
 ├── script.js                # All game logic: crypto, config packing, modes, board, keyboard
 ├── script.obf.js            # Obfuscated build of script.js (the file the pages load)
 ├── style.css                # Styles
+├── favicon.svg              # Site icon
 ├── netlify.toml             # Publish dir + functions dir
 ├── package.json             # Build script, @netlify/blobs, javascript-obfuscator
 └── netlify/functions/
