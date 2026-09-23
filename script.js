@@ -393,21 +393,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var STORAGE_PLAYS_PREFIX = 'wordle_plays_';
     var STORAGE_PROGRESS_PREFIX = 'wordle_progress_';
+    var STORAGE_TIMER_PREFIX = 'wordle_timer_';
 
     async function init(){
         var p=new URLSearchParams(window.location.search),d=p.get('d');
         if(d){
             var frag=window.location.hash.replace(/^#/,'');
-            if(!frag){showCreatorWithMessage('Invalid link (missing key.)');return;}
+            if(!frag){showDamagedLink('The end of the link (the part after #) is missing.');return;}
             var tokenBuf;
             try{tokenBuf=new Uint8Array(B64.dec(frag));}
-            catch(e){showCreatorWithMessage('Invalid link.');return;}
-            masterKeyBuf=await deriveKey(tokenBuf);
+            catch(e){showDamagedLink();return;}
             var cfg;
-            try{cfg=unpack(await unseal(d,masterKeyBuf));}
+            try{masterKeyBuf=await deriveKey(tokenBuf);cfg=unpack(await unseal(d,masterKeyBuf));}
             catch(e){
                 try{masterKeyBuf=tokenBuf;cfg=unpack(await unseal(d,masterKeyBuf));}
-                catch(e2){showCreatorWithMessage('This link is invalid or has been tampered with.');return;}
+                catch(e2){showDamagedLink();return;}
             }
 
             var word=cfg.word.toUpperCase();
@@ -423,9 +423,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             var nm=cfg.numberMode;
             if(nm&&!cfg.mixedMode){
-                if(!word||!/^[0-9]+$/.test(word)){showCreatorWithMessage('Invalid link.');return;}
+                if(!word||!/^[0-9]+$/.test(word)){showDamagedLink();return;}
             }else{
-                if(!word||!/^[A-Z]+$/.test(word)){showCreatorWithMessage('Invalid link.');return;}
+                if(!word||!/^[A-Z]+$/.test(word)){showDamagedLink();return;}
             }
 
             targetWord=word;wordLength=word.length;hideWordOnLoss=cfg.hide;
@@ -442,6 +442,8 @@ document.addEventListener('DOMContentLoaded', function () {
             chainMode=cfg.chain;bookMode=cfg.bookMode;voidMode=cfg.voidMode;blitzMode=cfg.blitz;
             hintUnlockAfter=cfg.hintUnlock||0;showModesFlag=cfg.showModes;
             mixedMode=cfg.mixedMode;
+            /* Creator's guess count (1-20); Blitz and Sniper override it below */
+            maxGuesses=Math.max(1,Math.min(20,cfg.guesses||6));
             if(blitzMode)maxGuesses=oneStrike?1:3;
             if(sniperMode)maxGuesses=1;
             if(minefieldMode){
@@ -596,8 +598,25 @@ document.addEventListener('DOMContentLoaded', function () {
             var col=document.getElementById('create-own-link');if(col)col.classList.remove('hidden');
             initializeGame(savedProgress);
         }else{
-            gameContainer.classList.add('hidden');creatorContainer.classList.remove('hidden');setupCreator();
+            gameContainer.classList.add('hidden');creatorContainer.classList.remove('hidden');
+            /* A #token with no ?d= part means the link was cut short */
+            if(window.location.hash.length>1&&!document.getElementById('generate-link-button')){showDamagedLink();return;}
+            setupCreator();
         }
+    }
+
+    /* Landing page message for links that were truncated or mangled while copying */
+    function showDamagedLink(detail){
+        gameContainer.classList.add('hidden');creatorContainer.classList.remove('hidden');
+        var t=document.getElementById('landing-title'),b=document.getElementById('landing-body'),ic=document.getElementById('landing-icon');
+        if(t&&b){
+            if(ic)ic.textContent='🔗';
+            t.textContent='This puzzle link looks damaged or incomplete';
+            b.textContent=(detail?detail+' ':'')+'Links sometimes get cut off when copied. Ask for the link again and make sure you copy all of it.';
+        }else{
+            showToast('This puzzle link looks damaged or incomplete.',3000);
+        }
+        setupCreator();
     }
 
     // Save progress to localStorage only (URL stays stable). Includes partial row (typed-but-not-submitted).
@@ -627,6 +646,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var frag=window.location.hash.replace(/^#/,'');
             if(!frag)return;
             localStorage.removeItem(STORAGE_PROGRESS_PREFIX+frag);
+            localStorage.removeItem(STORAGE_TIMER_PREFIX+frag);
         }catch(e){}
     }
 
@@ -665,8 +685,9 @@ document.addEventListener('DOMContentLoaded', function () {
         reportResult(isWin, isWin ? currentRow+1 : maxGuesses);
         var left=maxPlays-playsUsed,icon,title,body,sub;
         var what=numberMode?'number':'word';
-        if(isWin){icon='🎉';title='Well done!';body='You found the '+what+' in '+(currentRow+1)+' guess'+(currentRow+1!==1?'es':'')+'!';}
-        else{icon='😔';title='Better luck next time';body=!hideWordOnLoss?'The '+what+' was <strong>'+escHtml(targetWord)+'</strong>.': "You didn\u2019t find the "+what+" this time.";}
+        var n=currentRow+1,gs=' guess'+(n!==1?'es':'');
+        if(isWin){icon='🎉';title='Well done!';body=multiWord?'You found '+bothLabel()+', '+bothWordsHtml()+', in '+n+gs+'!':'You found the '+what+' in '+n+gs+'!';}
+        else{icon='😔';title='Better luck next time';body=!hideWordOnLoss?(multiWord?'The answers were '+bothWordsHtml()+'.':'The '+what+' was <strong>'+escHtml(targetWord)+'</strong>.'): "You didn\u2019t find the "+what+(multiWord?'s':'')+" this time.";}
         sub=left>0?'You have '+left+' attempt'+(left!==1?'s':'')+' remaining.':(isWin?"You\u2019ve used all your attempts.":"This link is now locked.");
         var dist=shareDist?buildEmojiGrid(isWin):null;
         setTimeout(function(){
@@ -674,6 +695,9 @@ document.addEventListener('DOMContentLoaded', function () {
             document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});
         },800);
     }
+
+    function bothLabel(){return mixedMode?'the word and the number':(numberMode?'both numbers':'both words');}
+    function bothWordsHtml(){return '<strong>'+escHtml(targetWord)+'</strong> &amp; <strong>'+escHtml(targetWord2)+'</strong>';}
 
     function buildEmojiGrid(isWin){
         function rs(grid){return grid.map(function(row){return row.map(function(e){var s=e.s||e;return s==='correct'?(noColorFeedback?'⬜':'🟩'):s==='present'?(noColorFeedback?'⬜':'🟨'):'⬛';}).join('');}).join('\n');}
@@ -686,13 +710,13 @@ document.addEventListener('DOMContentLoaded', function () {
     function buildOverlay(opts){
         var el=document.createElement('div');el.className='end-overlay';
         var dh=opts.dist?'<div class="dist-grid"><pre class="dist-emoji">'+opts.dist+'</pre><button class="dist-copy-btn">Copy Result</button></div>':'';
-        el.innerHTML='<div class="end-card'+(opts.winCard?' win-card':'')+'"><div class="end-icon">'+opts.icon+'</div><h2 class="end-title">'+opts.title+'</h2><p class="end-body">'+opts.body+'</p><p class="end-sub">'+(opts.sub||'')+'</p>'+dh+(opts.btnText?'<button class="end-btn">'+opts.btnText+'</button>':'')+' </div>';
+        var mk=opts.noCreatorLink?'':'<a class="end-make-link" href="creator.html">✏️ Make your own puzzle</a>';
+        el.innerHTML='<div class="end-card'+(opts.winCard?' win-card':'')+'"><div class="end-icon">'+opts.icon+'</div><h2 class="end-title">'+opts.title+'</h2><p class="end-body">'+opts.body+'</p><p class="end-sub">'+(opts.sub||'')+'</p>'+dh+(opts.btnText?'<button class="end-btn">'+opts.btnText+'</button>':'')+mk+'</div>';
         if(opts.btnText&&opts.onBtn)el.querySelector('.end-btn').addEventListener('click',opts.onBtn);
         if(opts.dist)el.querySelector('.dist-copy-btn').addEventListener('click',function(){navigator.clipboard.writeText(opts.dist).catch(function(){});showToast('Copied! \uD83D\uDCCB',1500);});
         return el;
     }
 
-    function showCreatorWithMessage(msg){gameContainer.classList.add('hidden');creatorContainer.classList.remove('hidden');showToast(msg);setupCreator();}
 
     /* ═══════════════════════════════════════════════════════
        GAME INIT
@@ -725,13 +749,14 @@ document.addEventListener('DOMContentLoaded', function () {
         if(savedProgress&&(savedProgress.savedGuesses&&savedProgress.savedGuesses.length>0||savedProgress.savedGuesses2&&savedProgress.savedGuesses2.length>0)){
             restoreProgress(savedProgress.savedGuesses,savedProgress.savedGuesses2,savedProgress.partial);
         } else {
-            if(revealFirst){
-                var ft=document.getElementById('tile-0-0');
-                if(ft){ft.textContent=targetWord[0];ft.classList.add('filled','tile-locked');currentCol=1;}
-                if(multiWord){var ft2=document.getElementById('tile2-0-0');if(ft2){ft2.textContent=targetWord2[0];ft2.classList.add('filled','tile-locked');currentCol2=1;}}
-            }
+            applyRevealFirst();
         }
-        if(timedMode)startTimer();
+        if(multiWord){focusNextOpenBoard();addMultiHint();}
+        if(timedMode){
+            renderTimerBar();
+            var savedStart=null;try{var k=timerStorageKey();if(k)savedStart=parseInt(localStorage.getItem(k)||'',10);}catch(e){}
+            if(savedStart&&savedStart>0)runTimer(savedStart);
+        }
         if(glitchMode)startGlitch();
     }
 
@@ -772,14 +797,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         tile.classList.add(noColorFeedback?(entry.s==='correct'?'correct':'absent-silent'):cls);
                     }
                     if(entry.l&&!noColorFeedback&&!blindMode){
-                        var kEl=document.getElementById('key-'+entry.l);
-                        if(kEl){
-                            var rank=function(s){return s==='correct'?2:s==='present'?1:0;};
-                            if(rank(entry.s)>rank(kEl.dataset.status||'')){
-                                kEl.classList.remove('present','absent','correct');
-                                kEl.classList.add(entry.s);kEl.dataset.status=entry.s;
-                            }
-                        }
+                        markKey(entry.l,entry.s);
                     }
                 }
             }
@@ -788,15 +806,14 @@ document.addEventListener('DOMContentLoaded', function () {
         renderGrid(guessGrid,'tile');
         if(multiWord)renderGrid(guessGrid2,'tile2');
 
-        currentRow=guessGrid.length;
-        currentCol=revealFirst?1:0;
-        currentCol2=revealFirst?1:0;
-
-        if(revealFirst){
-            var ft=document.getElementById('tile-'+currentRow+'-0');
-            if(ft&&!ft.textContent){ft.textContent=targetWord[0];ft.classList.add('filled','tile-locked');currentCol=1;}
-            if(multiWord){var ft2=document.getElementById('tile2-'+currentRow+'-0');if(ft2&&!ft2.textContent){ft2.textContent=targetWord2[0];ft2.classList.add('filled','tile-locked');currentCol2=1;}}
-        }
+        /* In multi-word games a solved board stops growing, so the current row is the longer grid */
+        currentRow=Math.max(guessGrid.length,multiWord?guessGrid2.length:0);
+        function rowSolved(row){return row&&row.length&&row.every(function(e){return e&&e.s==='correct';});}
+        if(multiWord&&guessGrid2.some(rowSolved)){word2Solved=true;showBoardBadge(2);}
+        if(multiWord&&guessGrid.some(rowSolved))showBoardBadge(1);
+        currentCol=(multiWord&&isWord1Solved())?wordLength:0;
+        currentCol2=word2Solved?wordLength:0;
+        applyRevealFirst();
 
         // Restore partial row (typed but not submitted) so refresh doesn't lose letters
         if(partial&&partial.row===currentRow&&partial.cells&&Array.isArray(partial.cells)){
@@ -922,22 +939,45 @@ document.addEventListener('DOMContentLoaded', function () {
         gameContainer.insertBefore(bar,gameContainer.firstChild);
     }
 
-    function startTimer(){
-        var rem=timerSeconds;
+    /* Timed mode: the clock starts on the player's first key and its start time is
+       stored per puzzle, so reloading the page does not reset it. */
+    var timerStarted=false;
+    function timerStorageKey(){var f=window.location.hash.replace(/^#/,'');return f?STORAGE_TIMER_PREFIX+f:null;}
+    function renderTimerBar(){
+        if(document.getElementById('timer-bar-wrap'))return;
         var wrap=document.createElement('div');wrap.id='timer-bar-wrap';
-        wrap.innerHTML='<div id="timer-bar-inner"></div><span id="timer-label">'+rem+'s</span>';
+        wrap.innerHTML='<div class="timer-track"><div id="timer-bar-inner"></div></div><span id="timer-label">'+timerSeconds+'s</span>';
         var mb=gameContainer.querySelector('.mode-bar');
         gameContainer.insertBefore(wrap,mb?mb.nextSibling:gameBoard);
-        var inner=document.getElementById('timer-bar-inner'),label=document.getElementById('timer-label');
-        requestAnimationFrame(function(){requestAnimationFrame(function(){inner.style.transition='width '+timerSeconds+'s linear';inner.style.width='0%';});});
-        timerInterval=setInterval(function(){
-            rem--;label.textContent=rem+'s';
+        var hint=document.createElement('div');hint.id='timer-hint';hint.textContent='\u23F1 The clock starts when you type your first letter.';
+        wrap.insertAdjacentElement('afterend',hint);
+    }
+    function maybeStartTimer(){
+        if(!timedMode||timerStarted||isGameOver)return;
+        var start=Date.now(),k=timerStorageKey();
+        try{if(k)localStorage.setItem(k,String(start));}catch(e){}
+        runTimer(start);
+    }
+    function runTimer(startMs){
+        timerStarted=true;renderTimerBar();
+        var hint=document.getElementById('timer-hint');if(hint)hint.remove();
+        var wrap=document.getElementById('timer-bar-wrap'),inner=document.getElementById('timer-bar-inner'),label=document.getElementById('timer-label');
+        function remaining(){return Math.max(0,timerSeconds-Math.floor((Date.now()-startMs)/1000));}
+        var rem=remaining();
+        var frac=Math.max(0,Math.min(1,(timerSeconds*1000-(Date.now()-startMs))/(timerSeconds*1000)));
+        inner.style.transition='none';inner.style.width=(frac*100)+'%';label.textContent=rem+'s';
+        function tick(){
+            rem=remaining();label.textContent=rem+'s';
             if(rem<=5)wrap.classList.add('timer-danger');
-            if(rem<=0){clearInterval(timerInterval);timerInterval=null;if(!isGameOver){isGameOver=true;if(maxPlays>0)showGameOverScreen(false);else showTimeUpOverlay();}}
-        },1000);
+            if(rem<=0){clearInterval(timerInterval);timerInterval=null;if(!isGameOver){isGameOver=true;isRevealing=false;if(maxPlays>0)showGameOverScreen(false);else showTimeUpOverlay();}}
+        }
+        if(rem<=0){tick();return;}
+        requestAnimationFrame(function(){requestAnimationFrame(function(){inner.style.transition='width '+(frac*timerSeconds)+'s linear';inner.style.width='0%';});});
+        if(rem<=5)wrap.classList.add('timer-danger');
+        timerInterval=setInterval(tick,250);
     }
 
-    function stopTimer(){if(timerInterval){clearInterval(timerInterval);timerInterval=null;}var inner=document.getElementById('timer-bar-inner');if(inner)inner.style.transition='none';}
+    function stopTimer(){if(timerInterval){clearInterval(timerInterval);timerInterval=null;}var inner=document.getElementById('timer-bar-inner');if(inner){var w=getComputedStyle(inner).width;inner.style.transition='none';inner.style.width=w;}}
 
     function startGlitch(){
         if(!glitchMode)return;
@@ -979,9 +1019,10 @@ document.addEventListener('DOMContentLoaded', function () {
     function stopGlitch(){if(glitchInterval){clearInterval(glitchInterval);glitchInterval=null;}}
 
     function showTimeUpOverlay(){
-        var words=multiWord?escHtml(targetWord)+' & '+escHtml(targetWord2):escHtml(targetWord);
         var what=numberMode?'number':'word';
-        var o=buildOverlay({icon:'⏱',title:"Time's up!",body:hideWordOnLoss?'You ran out of time.':'The '+what+(multiWord?'s were':' was')+' <strong>'+words+'</strong>.',sub:''});
+        var body=hideWordOnLoss?'You ran out of time.':(multiWord?'The answers were '+bothWordsHtml()+'.':'The '+what+' was <strong>'+escHtml(targetWord)+'</strong>.');
+        /* Unlimited puzzles can be retried: clear the saved board and timer, then reload */
+        var o=buildOverlay({icon:'⏱',title:"Time's up!",body:body,sub:'',btnText:maxPlays>0?null:'Try again',onBtn:function(){clearProgress();location.reload();}});
         document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});
     }
 
@@ -1007,15 +1048,11 @@ document.addEventListener('DOMContentLoaded', function () {
             var l=document.createElement('div');l.className='board-label';l.textContent=lbl;
             var grid=document.createElement('div');grid.className='board-grid';grid.style.cssText='display:grid;grid-template-rows:repeat('+maxGuesses+',1fr);gap:6px;';
             half.dataset.board=String(boardNum);
-            half.addEventListener('click',function(){
-                activeMultiBoard=boardNum;
-                document.querySelectorAll('.board-half').forEach(function(el){el.classList.remove('active-board');});
-                half.classList.add('active-board');
-            });
+            half.addEventListener('click',function(){if(boardOpen(boardNum))setActiveBoard(boardNum);});
             half.appendChild(l);half.appendChild(grid);createSingleBoard(grid,pfx);return half;
         }
-        var label1=(numberMode&&!mixedMode)?'Number 1':'Word 1';
-        var label2=(numberMode||mixedMode)?'Number 2':'Word 2';
+        var label1=boardName(1);
+        var label2=boardName(2);
         gameBoard.appendChild(makeHalf(label1,'tile',1));gameBoard.appendChild(makeHalf(label2,'tile2',2));
         var first=gameBoard.querySelector('.board-half');
         if(first)first.classList.add('active-board');
@@ -1074,21 +1111,20 @@ function createKeyboard(){
         }
     }
 
+    /* Every keyboard layout has its own ENTER key, so no separate submit button */
     function upsertSubmitButton(){
         var existing=document.getElementById('submit-button');
-        if(!(numberMode||multiWord)){
-            if(existing)existing.remove();
-            return;
-        }
-        if(!existing){
-            existing=document.createElement('button');
-            existing.id='submit-button';
-            existing.className='action-button';
-            existing.textContent='Enter';
-            existing.addEventListener('click',function(){submitGuess();});
-            keyboardContainer.insertAdjacentElement('afterend',existing);
-        }
+        if(existing)existing.remove();
     }
+
+    function addMultiHint(){
+        if(document.getElementById('multi-hint'))return;
+        var h=document.createElement('div');h.id='multi-hint';
+        h.textContent='Fill both rows, then press Enter. Tap a board or press Tab to switch.';
+        gameBoard.insertAdjacentElement('afterend',h);
+    }
+
+    function boardName(n){return n===2?((numberMode||mixedMode)?'Number 2':'Word 2'):((numberMode&&!mixedMode)?'Number 1':'Word 1');}
 
     function getBoardType(boardNum){
         if(boardNum===2)return (numberMode||mixedMode)?'number':'letter';
@@ -1161,42 +1197,92 @@ function createKeyboard(){
         hintsRemaining--;updateHintButton();
     }
 
+    /* True while a submitted row is flipping; input is ignored so the row can't change */
+    var isRevealing=false;
+
     function handleKeyPress(e){
-        if(isGameOver)return;
+        if(isGameOver||isRevealing)return;
+        if(e.ctrlKey||e.metaKey||e.altKey)return;
         var key=e.key.toUpperCase();
+        if(key==='TAB'){
+            if(multiWord){if(e.preventDefault)e.preventDefault();switchBoard();}
+            return;
+        }
         if(decayMode&&decayLockedKeys[key]){showToast('That key has decayed.');return;}
         if(key==='ENTER')submitGuess();
-        else if((key==='BACKSPACE'||key==='\u232b')&&!noBackspace)deleteLetter();
+        else if((key==='BACKSPACE'||key==='⌫')&&!noBackspace)deleteLetter();
         else if(key.length===1&&key>='0'&&key<='9'&&(numberMode||mixedMode))addLetter(key);
         else if(key.length===1&&key>='A'&&key<='Z'&&(!numberMode||mixedMode))addLetter(key);
     }
 
+    /* Reveal First: the first tile of every new row is pre-filled and locked */
+    function applyRevealFirst(){
+        if(!revealFirst||isGameOver)return;
+        if(!multiWord||!isWord1Solved()){
+            var t=document.getElementById('tile-'+currentRow+'-0');
+            if(t&&!t.textContent){t.textContent=targetWord[0];t.classList.add('filled','tile-locked');}
+            if(currentCol<1)currentCol=1;
+        }
+        if(multiWord&&!word2Solved){
+            var t2=document.getElementById('tile2-'+currentRow+'-0');
+            if(t2&&!t2.textContent){t2.textContent=targetWord2[0];t2.classList.add('filled','tile-locked');}
+            if(currentCol2<1)currentCol2=1;
+        }
+    }
+
+    /* Multi-word: which board receives typing */
+    function setActiveBoard(n){
+        if(!multiWord)return;
+        activeMultiBoard=n;
+        document.querySelectorAll('.board-half').forEach(function(el){el.classList.toggle('active-board',el.dataset.board===String(n));});
+    }
+    function boardOpen(n){return n===2?!word2Solved:!isWord1Solved();}
+    function boardRowFull(n){return n===2?(word2Solved||currentCol2>=wordLength):(isWord1Solved()||currentCol>=wordLength);}
+    function switchBoard(){
+        var other=activeMultiBoard===1?2:1;
+        if(boardOpen(other))setActiveBoard(other);
+    }
+    /* Point typing at the first board that still needs letters in this row */
+    function focusNextOpenBoard(){
+        if(!multiWord)return;
+        if(boardOpen(1)&&!boardRowFull(1))setActiveBoard(1);
+        else if(boardOpen(2)&&!boardRowFull(2))setActiveBoard(2);
+        else if(boardOpen(1))setActiveBoard(1);
+        else setActiveBoard(2);
+    }
+
     function addLetter(letter){
+        maybeStartTimer();
         if(multiWord){
-            var minC=(revealFirst&&currentRow===0)?1:0;
+            var minC=revealFirst?1:0;
             var isNum = letter >= '0' && letter <= '9';
+            if(!boardOpen(activeMultiBoard))focusNextOpenBoard();
             if(activeMultiBoard===2){
                 if(word2Solved)return;
                 if(getBoardType(2)==='number'?!isNum:isNum)return;
                 if(noReuseMode&&getAbsentCharsFromGrid(guessGrid2)[letter]){shakeRow("You already know that letter isn't in the word!");return;}
                 if(currentCol2<wordLength){if(currentCol2<minC)currentCol2=minC; var t2=document.getElementById('tile2-'+currentRow+'-'+currentCol2); if(t2){t2.textContent=letter;t2.classList.add('filled');currentCol2++;}}
+                if(currentCol2>=wordLength&&boardOpen(1)&&!boardRowFull(1)){setActiveBoard(1);showToast('Now finish '+boardName(1),1200);}
             }else{
                 if(isWord1Solved())return;
                 if(getBoardType(1)==='number'?!isNum:isNum)return;
                 if(noReuseMode&&getAbsentCharsFromGrid(guessGrid)[letter]){shakeRow("You already know that letter isn't in the word!");return;}
                 if(currentCol<wordLength){if(currentCol<minC)currentCol=minC; var t1=document.getElementById('tile-'+currentRow+'-'+currentCol); if(t1){t1.textContent=letter;t1.classList.add('filled');currentCol++;}}
+                if(currentCol>=wordLength&&boardOpen(2)&&!boardRowFull(2)){setActiveBoard(2);showToast('Now type '+boardName(2),1200);}
             }
             scheduleSaveProgress();return;
         }
-        if(revealFirst&&currentRow===0&&currentCol<1)currentCol=1;
+        if(revealFirst&&currentCol<1)currentCol=1;
         if(getBoardType(1)==='number'?(letter<'0'||letter>'9'):(letter<'A'||letter>'Z'))return;
         if(noReuseMode&&getAbsentCharsFromGrid(guessGrid)[letter]){shakeRow("You already know that letter isn't in the word!");return;}
         if(currentCol<wordLength){var t=document.getElementById('tile-'+currentRow+'-'+currentCol);t.textContent=letter;t.classList.add('filled');currentCol++;scheduleSaveProgress();}
     }
 
     function deleteLetter(){
+        var minC=revealFirst?1:0;
         if(multiWord){
-            var minC=(revealFirst&&currentRow===0)?1:0;
+            /* Backspace on an empty Word 2 row steps back into Word 1 */
+            if(activeMultiBoard===2&&(word2Solved||currentCol2<=minC)&&boardOpen(1))setActiveBoard(1);
             if(activeMultiBoard===2){
                 if(!word2Solved&&currentCol2>minC){currentCol2--;var t2=document.getElementById('tile2-'+currentRow+'-'+currentCol2);if(t2){t2.textContent='';t2.classList.remove('filled');}}
             }else{
@@ -1204,7 +1290,6 @@ function createKeyboard(){
             }
             scheduleSaveProgress();return;
         }
-        var minC=(revealFirst&&currentRow===0)?1:0;
         if(currentCol>minC){currentCol--;var t=document.getElementById('tile-'+currentRow+'-'+currentCol);t.textContent='';t.classList.remove('filled');scheduleSaveProgress();}
     }
 
@@ -1218,7 +1303,7 @@ function createKeyboard(){
     ════════════════════════════════════════════════════════ */
 
     function submitGuess(){
-        if(isGameOver)return;
+        if(isGameOver||isRevealing)return;
         if(multiWord){submitMultiGuess();return;}
         if(currentCol!==wordLength){shakeRow('Not enough letters');return;}
         var guess='';for(var i=0;i<wordLength;i++)guess+=document.getElementById('tile-'+currentRow+'-'+i).textContent;
@@ -1270,26 +1355,32 @@ function createKeyboard(){
             }
         }
         saveProgress();
+        isRevealing=true;
         revealTiles('tile',guess.split(''),result,actualWin,function(w){checkSingleState(w);});
     }
 
     function submitMultiGuess(){
         var b1Done=isWord1Solved();
-        if(!b1Done&&currentCol<wordLength){shakeRow('Not enough letters');return;}
-        if(!word2Solved&&currentCol2<wordLength){shakeRow('Not enough letters');return;}
+        if(!b1Done&&currentCol<wordLength){setActiveBoard(1);shakeRow(currentCol2>=wordLength||word2Solved?boardName(1)+' needs more '+(getBoardType(1)==='number'?'digits':'letters'):'Not enough letters');return;}
+        if(!word2Solved&&currentCol2<wordLength){setActiveBoard(2);shakeRow('Now type '+boardName(2));return;}
         var win1=b1Done,win2=word2Solved,pending=0;
         if(!b1Done){
             var g1='';for(var i=0;i<wordLength;i++)g1+=document.getElementById('tile-'+currentRow+'-'+i).textContent;
             var bad1=hasNoReuseViolation(g1,guessGrid);
             if(bad1){shakeRow("You already know that letter isn't in the word!");return;}
-            var actualWin1 = isPrimaryWinGuess(g1);
-            var r1=scoreGuess(g1,targetWord);r1=applyModeScore(r1,g1,currentRow);guessGrid.push(r1.slice());pending++;
-            revealTiles('tile',g1.split(''),r1,actualWin1,function(w){if(w)win1=true;pending--;if(!pending){saveProgress();afterMultiReveal(win1,win2,b1Done);}});
         }
         if(!word2Solved){
             var g2='';for(var i=0;i<wordLength;i++)g2+=document.getElementById('tile2-'+currentRow+'-'+i).textContent;
             var bad2=hasNoReuseViolation(g2,guessGrid2);
             if(bad2){shakeRow("You already know that letter isn't in the word!");return;}
+        }
+        isRevealing=true;
+        if(!b1Done){
+            var actualWin1 = isPrimaryWinGuess(g1);
+            var r1=scoreGuess(g1,targetWord);r1=applyModeScore(r1,g1,currentRow);guessGrid.push(r1.slice());pending++;
+            revealTiles('tile',g1.split(''),r1,actualWin1,function(w){if(w){win1=true;showBoardBadge(1);}pending--;if(!pending){saveProgress();afterMultiReveal(win1,win2,b1Done);}});
+        }
+        if(!word2Solved){
             var actualWin2 = (g2 === targetWord2);
             var r2=scoreGuess(g2,targetWord2);guessGrid2.push(r2.slice());pending++;
             revealTiles('tile2',g2.split(''),r2,actualWin2,function(w){if(w){win2=true;word2Solved=true;showBoardBadge(2);}pending--;if(!pending){saveProgress();afterMultiReveal(win1,win2,b1Done);}});
@@ -1301,12 +1392,13 @@ function createKeyboard(){
 
     function afterMultiReveal(win1,win2,b1Done){
         setTimeout(function(){
+            isRevealing=false;
             if(win1&&win2){
                 for(var i=0;i<wordLength;i++)(function(idx){setTimeout(function(){var t1=document.getElementById('tile-'+currentRow+'-'+idx),t2=document.getElementById('tile2-'+currentRow+'-'+idx);if(t1)t1.classList.add('jump');if(t2)t2.classList.add('jump');},idx*100);})(i);
                 isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(true);else showWinOverlay();
             }else if(oneStrike&&(!win1||!win2)){isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(false);else showLossOverlay();}
             else if(currentRow===maxGuesses-1){isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(false);else showLossOverlay();}
-            else{isGameOver=false;currentRow++;currentCol=(win1||isWord1Solved())?wordLength:0;currentCol2=word2Solved?wordLength:0;}
+            else{isGameOver=false;currentRow++;currentCol=(win1||isWord1Solved())?wordLength:0;currentCol2=word2Solved?wordLength:0;applyRevealFirst();focusNextOpenBoard();}
         },wordLength*300+200);
     }
 
@@ -1408,6 +1500,23 @@ function createKeyboard(){
         return result;
     }
 
+    /* Keyboard colouring: correct > present > absent > unknown. In multi-word games a
+       letter is only greyed out once it is known to be absent from both words. */
+    function keyRank(st){return st==='correct'?2:st==='present'?1:st==='absent'?0:-1;}
+    function markKey(letter,status){
+        var kEl=document.getElementById('key-'+letter);
+        if(!kEl)return;
+        if(status==='absent'&&multiWord){
+            var out1=isWord1Solved()?targetWord.indexOf(letter)===-1:!!getAbsentCharsFromGrid(guessGrid)[letter];
+            var out2=word2Solved?targetWord2.indexOf(letter)===-1:!!getAbsentCharsFromGrid(guessGrid2)[letter];
+            if(!(out1&&out2))return;
+        }
+        if(keyRank(status)>keyRank(kEl.dataset.status||'')){
+            kEl.classList.remove('present','absent','correct');
+            kEl.classList.add(status);kEl.dataset.status=status;
+        }
+    }
+
     function revealTiles(prefix,guessLetters,result,isWin,callback){
         result.forEach(function(entry,i){
             var status=entry.s, letter=entry.l;
@@ -1416,7 +1525,7 @@ function createKeyboard(){
                 if(tile){tile.classList.add('flip');setTimeout(function(){tile.classList.add(noColorFeedback?(status==='correct'?'correct':'absent-silent'):status);},250);}
                 if(!blindMode){
                     var kEl=document.getElementById('key-'+letter);
-                    if(kEl){var rank=function(s){return s==='correct'?2:s==='present'?1:0;};if(!noColorFeedback){if(rank(status)>rank(kEl.dataset.status||'')){kEl.classList.remove('present','absent','correct');kEl.classList.add(status);kEl.dataset.status=status;}}else if(status==='correct'){kEl.classList.remove('present','absent','correct');kEl.classList.add('correct');kEl.dataset.status='correct';}}
+                    if(kEl){if(!noColorFeedback){markKey(letter,status);}else if(status==='correct'){kEl.classList.remove('present','absent','correct');kEl.classList.add('correct');kEl.dataset.status='correct';}}
                 }
                 if(i===wordLength-1)setTimeout(function(){if(callback)callback(isWin);},50);
                 if(memoryMode&&i===wordLength-1){
@@ -1427,7 +1536,7 @@ function createKeyboard(){
                                 var mt=document.getElementById(pfx+'-'+row+'-'+mc);
                                 if(!mt)continue;
                                 mt.textContent='';
-                                mt.classList.remove('filled','correct','present','absent','absent-silent');
+                                mt.classList.remove('filled','correct','present','absent','absent-silent','tile-locked');
                             }
                         },2000);
                     })(currentRow,prefix);
@@ -1438,6 +1547,7 @@ function createKeyboard(){
 
     function checkSingleState(isWin){
         setTimeout(function(){
+            isRevealing=false;
             var minePenalty=0;
             if(minefieldMode&&!isWin){
                 var hits=mineHitsByRow[currentRow]||[];
@@ -1461,7 +1571,7 @@ function createKeyboard(){
                     spiralUsedWords.push(targetWord);
                     currentRow=0;currentCol=0;guessGrid=[];isGameOver=false;
                     showToast('🌀 Spiral round '+(spiralRound+1)+' / 4');
-                    applyDynamicSizing();createBoard();createKeyboard();showModeInfoBanner();updateHintButton();saveProgress();
+                    applyDynamicSizing();createBoard();createKeyboard();showModeInfoBanner();updateHintButton();applyRevealFirst();saveProgress();
                     return;
                 }
                 var tiles=document.querySelectorAll('[id^="tile-'+currentRow+'-"]');tiles.forEach(function(t,i){setTimeout(function(){t.classList.add('jump');},i*100);});isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(true);else showWinOverlay();
@@ -1470,7 +1580,7 @@ function createKeyboard(){
             else if((currentRow+1+minePenalty)>=maxGuesses){isGameOver=true;stopTimer();if(maxPlays>0)showGameOverScreen(false);else showLossOverlay();}
             else{
                 if(reverseMode)showToast('Wrong pattern! Try again.');
-                isGameOver=false;currentRow=currentRow+1+minePenalty;currentCol=0;updateHintButton();showModeInfoBanner();
+                isGameOver=false;currentRow=currentRow+1+minePenalty;currentCol=0;applyRevealFirst();updateHintButton();showModeInfoBanner();
             }
         },wordLength*300);
     }
@@ -1481,7 +1591,7 @@ function createKeyboard(){
         var msgs=numberMode?['Genius! 🧠','Magnificent! ✨','Splendid! 🎉','Great! 👏','Good job! 😊','Phew! 😅']:['Genius! 🧠','Magnificent! ✨','Splendid! 🎉','Great! 👏','Good job! 😊','Phew! 😅'];
         var praise=n<=msgs.length?msgs[n-1]:'Got it! 🎊';
         var what=numberMode?'number':'word';
-        setTimeout(function(){var o=buildOverlay({icon:'🎉',title:'You got it!',body:praise+' Found the '+what+' in <strong>'+n+'</strong> guess'+(n!==1?'es':'')+'.',sub:'',dist:dist,winCard:true,btnText:null});document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});},900);
+        setTimeout(function(){var o=buildOverlay({icon:'🎉',title:'You got it!',body:multiWord?praise+' You found '+bothLabel()+', '+bothWordsHtml()+', in '+n+' guess'+(n!==1?'es':'')+'.':praise+' Found the '+what+' in <strong>'+n+'</strong> guess'+(n!==1?'es':'')+'.',sub:'',dist:dist,winCard:true,btnText:null});document.body.appendChild(o);requestAnimationFrame(function(){o.classList.add('visible');});},900);
     }
 
     function showLossOverlay(){clearProgress();
@@ -1578,10 +1688,8 @@ function createKeyboard(){
 
         document.getElementById('generate-link-button').addEventListener('click',async function(){
             var word=document.getElementById('custom-word-input').value.toUpperCase().trim();
-            var label=(document.getElementById('puzzle-label-input')||{}).value||'Untitled';
-            label=label.trim().slice(0,80)||'Untitled';
             var hints=parseInt(document.getElementById('custom-hints-input').value)||0;
-            var guesses=parseInt(document.getElementById('custom-guesses-input').value)||6;
+            var guesses=Math.max(1,Math.min(20,parseInt(document.getElementById('custom-guesses-input').value)||6));
             var plays=parseInt(document.getElementById('custom-plays-input').value)||0;
             var hideW=document.getElementById('hide-word-toggle').checked;
             var noCol=document.getElementById('nofeedback-toggle').checked;
@@ -1662,17 +1770,6 @@ dictRestrict:document.getElementById('dictrestrict-toggle')&&document.getElement
                 var d=await seal(pack(cfg),keyBuf);
                 /* Always link back to the root (index.html), never to creator.html */
                 var link=window.location.origin+'/?d='+d+'#'+secret;
-                /* Register the puzzle server-side for dashboard tracking */
-                if(!LOCAL_DEV){
-                    /* PRODUCTION: register puzzle with server dashboard */
-                    try{
-                        var regId=await hashId(secret);
-                        var regPw=sessionStorage.getItem('creator_pw')||'';
-                        fetch('/.netlify/functions/register',{method:'POST',
-                            headers:{'Content-Type':'application/json','x-dashboard-password':regPw},
-                            body:JSON.stringify({id:regId,max:plays,label:label})});
-                    }catch(re){}
-                }
                 var sc=document.getElementById('share-link-container'),si=document.getElementById('share-link-input');
                 si.value=link;sc.classList.remove('hidden');
                 var cb=document.getElementById('copy-link-button'),nb=cb.cloneNode(true);
